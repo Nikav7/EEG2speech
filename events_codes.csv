@@ -1,0 +1,74 @@
+'Hello!',1,g
+'Yes!',2,g
+'No.',3,g
+'Water',4,g
+'Tea',5,g
+'Coffee',6,g
+'Food',7,g
+'Up',8,t
+'Down',9,g
+'Left',10,g
+'Right',11,g
+'Light',12,t
+'Dark',13,g
+'Head',14,g
+'Arm',15,g
+'Arms',16,tt
+'Leg',17,g
+'Legs',18,tt
+'Heart',19,g
+'Hands',20,g
+'Foot',21,g
+'Feet',22,t
+'Zero',23,g
+'One',24,g
+'Two',25,g
+'Three',26,g
+'Four',27,g
+'Five',28,g
+'Six',29,g
+'Seven',30,g
+'Eight',31,g
+'Nine',32,g
+'Times',33,g
+'Stop!',34,g
+'Go on.',35,g
+'Before',36,g
+'Now.',37,g
+'After',38,g
+'Yesterday',39,g
+'Today',40,g
+'Tomorrow',41,g
+'Shower',42,g
+'Wash',43,g
+'Bath',44,g
+'Love',45,g
+'Daughter',46,g
+'Son',47,t
+'Partner',48,t
+'Assistant',49,g
+'Nurse',50,g
+'Music',51,g
+'Drink',52,g
+'Jam',53,g
+'Yellow',54,g
+'What?',55,g
+'Where?',56,g
+'When?',57,t
+'Why?',58,t
+'Who?',59,g
+'How?',60,g
+'Thank you',61,g
+'I need',62,g
+'I want',63,tt
+'I can',64,g
+'I can t',65,tt
+'Sure!',66,g
+'Joy',67,g
+'Help!',68,t
+'Quit',69,g
+'Hot',70,t
+'Cold',71,t
+'Egg',72,g
+'Ribbon',73,g
+'Palm',74,g
