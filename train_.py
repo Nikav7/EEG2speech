@@ -913,7 +913,7 @@ def main(args):
         speech_type=args.task,
     )
     train_loader = torch.utils.data.DataLoader(
-        trainset, batch_size=args.batch_size, shuffle=True, generator=generator, num_workers=4*len(args.gpuNum), pin_memory=False)
+        trainset, batch_size=args.batch_size, shuffle=True, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=True) #4*len(args.gpuNum)
     
     valset = myDataset(
         mode=2,
@@ -927,7 +927,7 @@ def main(args):
         speech_type=args.task,
     )
     val_loader = torch.utils.data.DataLoader(
-        valset, batch_size=args.batch_size, shuffle=False, generator=generator, num_workers=4*len(args.gpuNum), pin_memory=False)
+        valset, batch_size=args.batch_size, shuffle=False, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=True) #4*len(args.gpuNum)
 
     epoch = start_epoch
     lr_g = 0
