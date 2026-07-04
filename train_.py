@@ -301,13 +301,14 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
         
         # extract unseen
         idx_unseen=[]
-        idx_seen=[]
-        for j in range(len(labels)):
-            lbl_idx = int(labels[j].item())
-            if args.classname[lbl_idx] == args.unseen:
-                idx_unseen.append(j)
-            else:
-                idx_seen.append(j)
+        #idx_seen=[]
+        idx_seen = list(range(len(labels)))
+        # for j in range(len(labels)):
+        #     lbl_idx = int(labels[j].item())
+        #     if args.classname[lbl_idx] == args.unseen:
+        #         idx_unseen.append(j)
+        #     else:
+        #         idx_seen.append(j)
         
         input_ns = input[idx_unseen]
         target_ns = target[idx_unseen]
@@ -943,7 +944,7 @@ def main(args):
         speech_type=args.task,
     )
     train_loader = torch.utils.data.DataLoader(
-        trainset, batch_size=args.batch_size, shuffle=True, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=False)
+        trainset, batch_size=args.batch_size, shuffle=True, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=True) #4*len(args.gpuNum)
     
     valset = myDataset(
         mode=2,
@@ -957,7 +958,7 @@ def main(args):
         speech_type=args.task,
     )
     val_loader = torch.utils.data.DataLoader(
-        valset, batch_size=args.batch_size, shuffle=False, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=False)
+        valset, batch_size=args.batch_size, shuffle=False, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=True) #4*len(args.gpuNum)
 
     epoch = start_epoch
     lr_g = 0
@@ -1063,13 +1064,14 @@ def main(args):
 if __name__ == '__main__':
 
     dataDir = './eegdata'
-    audioDir = './audiodata'
-    audioWavDir = './audiodata/twos_16000'
+    audioDir = './audiodata/logmel22'
+    audioWavDir = './audiodata/twos_22050'
     logDir = './TrainResult'
     
     parser = argparse.ArgumentParser(description='Hyperparams')
+    parser.add_argument('--max_epochs', type=int, default=1500)
     parser.add_argument('--vocoder_pre', type=str, default='UNIVERSAL_V1/g_02500000', help='pretrained vocoder file path')
-    parser.add_argument('--vocoder_type', type=str, default='hifigan_16k', choices=['hifigan', 'hifigan_16k', 'griffinlim'], help='vocoder backend to synthesize waveform from mel')
+    parser.add_argument('--vocoder_type', type=str, default='hifigan', choices=['hifigan', 'hifigan_16k', 'griffinlim'], help='vocoder backend to synthesize waveform from mel')
     parser.add_argument('--trained_model', type=str, default=None, help='trained model for G & D folder path')
     parser.add_argument('--model_config', type=str, default='./models', help='config for G & D folder path')
     parser.add_argument('--dataLoc', type=str, default=dataDir)
@@ -1095,7 +1097,7 @@ if __name__ == '__main__':
     parser.add_argument('--stt_backbone', type=str, default='wav2vec2_base_960h', choices=['wav2vec2_base_960h', 'wav2vec2_large_960h', 'hubert_large'])
     parser.add_argument('--ctc_device', type=str, default='cpu', choices=['cuda', 'cpu'], help='device for vocoder+STT+CTC branch')
     parser.add_argument('--cer_every_n_batches', type=int, default=6)
-    parser.add_argument('--compute_cer_in_val', type=bool, default=True)
+    parser.add_argument('--compute_cer_in_val', type=bool, default=False)
     
     args = parser.parse_args()
     
