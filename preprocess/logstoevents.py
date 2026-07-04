@@ -15,7 +15,7 @@ from matplotlib.widgets import Button
 import re
 import scipy.io as sio
 
-folder = r'C:\Users\lalli\Desktop\Thesis\data\TriParadigm\experimentDATA'
+folder = r'C:\Users\Thesis\data\TriParadigm\experimentDATA'
 
 all_logs = {}
 

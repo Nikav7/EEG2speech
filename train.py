@@ -1080,7 +1080,7 @@ if __name__ == '__main__':
     parser.add_argument('--audio_wav_path', type=str, default=audioWavDir, help='audio waveform directory with audio*.wav')
     parser.add_argument('--config', type=str, default='./config_params.json')
     parser.add_argument('--logDir', type=str, default=logDir)
-    parser.add_argument('--resume', type=bool, default=False)
+    parser.add_argument('--resume', type=bool, default=True)
     parser.add_argument('--pretrain', type=bool, default=False)
     parser.add_argument('--prefreeze', type=bool, default=False)
     parser.add_argument('--gpuNum', nargs='+', type=int, default=[0])
