@@ -150,7 +150,7 @@ if __name__ == "__main__":
     
     # args for vocoder and model
     args = SimpleNamespace(
-        vocoder_method="griffin-lim",
+        vocoder_method="hifigan",
         vocoder_target_mels=80,
         vocoder_config=os.path.join("UNIVERSAL_V1", "config.json"),
         vocoder_pretrained=os.path.join("UNIVERSAL_V1", "g_02500000"),

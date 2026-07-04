@@ -9,7 +9,7 @@ from models import ntGAN as networks
 from models.vocoders import Generator as model_HiFi
 from models.vocoders import GriffinLimVocoder, TorchaudioHiFiGAN16k
 from modules import DTW_align, GreedyCTCDecoder, AttrDict, RMSELoss
-from modules import mel2wav_vocoder, perform_STT
+#from modules import mel2wav_vocoder, perform_STT
 from utils import data_denorm, word_index
 import torch.nn as nn
 import torch.nn.functional as F
@@ -240,6 +240,22 @@ def _stt_forward_chunked(model_stt, wave, chunk_size, requires_grad):
                 emissions.append(em)
 
     return torch.cat(emissions, dim=0)
+def _debug_stage(args, stage, **kwargs):
+    if not bool(getattr(args, "debug_batch_trace", False)):
+        return
+
+    details = " ".join(f"{key}={value}" for key, value in kwargs.items())
+    suffix = f" {details}" if details else ""
+    print(f"[debug] {stage}{suffix}", flush=True)
+
+    if torch.cuda.is_available() and bool(getattr(args, "debug_cuda_sync", False)):
+        torch.cuda.synchronize()
+
+    if torch.cuda.is_available() and bool(getattr(args, "debug_cuda_memory", False)):
+        allocated_mb = torch.cuda.memory_allocated() / (1024 ** 2)
+        reserved_mb = torch.cuda.memory_reserved() / (1024 ** 2)
+        print(f"[debug] cuda_mem allocated_mb={allocated_mb:.1f} reserved_mb={reserved_mb:.1f}", flush=True)
+
 
 def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=True, inference=False):
     '''
@@ -273,12 +289,15 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
     for i, (input, target, target_cl, data_info) in enumerate(train_loader):    
 
         print("\rBatch [%5d / %5d]"%(i,total_batches), sep=' ', end='', flush=True)
+        _debug_stage(args, "batch_loaded_cpu", batch=i, input_shape=tuple(input.shape), target_shape=tuple(target.shape))
         
         input = input.cuda()
         target = target.cuda()
         target_cl = target_cl.cuda()
+        _debug_stage(args, "batch_to_cuda", batch=i)
         labels = _labels_from_target_cl(target_cl, len(args.classname))
         voice = _build_voice_batch(labels, args.audio_wavs, input.device)
+        _debug_stage(args, "voice_built", batch=i, voice_shape=tuple(voice.shape))
         
         # extract unseen
         idx_unseen=[]
@@ -466,16 +485,20 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
         optimizer_g.zero_grad()
         
         # Run Generator
+        _debug_stage(args, "generator_forward_start", batch=batch_idx, batch_size=len(input))
         output = model_g(input)
+        _debug_stage(args, "generator_forward_done", batch=batch_idx, output_shape=tuple(output.shape))
     else:
         with torch.no_grad():
             # run generator
             output = model_g(input)
+        _debug_stage(args, "generator_eval_done", batch=batch_idx, output_shape=tuple(output.shape))
     _assert_finite("generator_output", output)
     
     # DTW
     mel_out = output.clone()
     mel_out = DTW_align(mel_out, target)
+    _debug_stage(args, "dtw_done", batch=batch_idx, mel_shape=tuple(mel_out.shape))
     #_assert_finite("mel_out_after_dtw", mel_out)
     #mel_out = torch.clamp(mel_out, min=args.mel_clamp_min, max=args.mel_clamp_max)
     #_assert_finite("mel_out_after_clamp", mel_out)
@@ -498,6 +521,7 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
     # out_DTW
     output_denorm = data_denorm(mel_out, data_info[0], data_info[1])
     _assert_finite("output_denorm", output_denorm)
+    _debug_stage(args, "mel_denorm_done", batch=batch_idx, denorm_shape=tuple(output_denorm.shape))
     #output_denorm = torch.clamp(output_denorm, min=args.vocoder_mel_min, max=args.vocoder_mel_max)
     #_assert_finite("output_denorm_after_clamp", output_denorm)
 
@@ -523,6 +547,7 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
     output_denorm_ctc = output_denorm.to(ctc_device)
     wav_recon = vocoder(output_denorm_ctc)
     _assert_finite("wav_recon_from_vocoder", wav_recon)
+    _debug_stage(args, "vocoder_done", batch=batch_idx, wav_shape=tuple(wav_recon.shape), ctc_device=ctc_device)
     wav_recon = torch.clamp(wav_recon, min=-1.0, max=1.0)
     wav_recon = torch.reshape(wav_recon, (len(wav_recon), wav_recon.shape[-1]))
 
@@ -533,6 +558,7 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
     ##### STT Wav2Vec 2.0
     stt_chunk_size = int(getattr(args, "stt_chunk_size", 4))
     emission_recon = _stt_forward_chunked(model_STT, wav_recon, stt_chunk_size, requires_grad=True)
+    _debug_stage(args, "stt_recon_done", batch=batch_idx, emission_shape=tuple(emission_recon.shape), stt_chunk_size=stt_chunk_size)
 
     should_compute_cer = False
     if phase_is_train:
@@ -548,6 +574,7 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
     if should_compute_cer:
         stt_chunk_size = int(getattr(args, "stt_chunk_size", 4))
         emission_gt = _stt_forward_chunked(model_STT, voice.to(ctc_device), stt_chunk_size, requires_grad=False)
+        _debug_stage(args, "stt_gt_done", batch=batch_idx, emission_shape=tuple(emission_gt.shape))
 
     if emission_recon is None and should_compute_cer:
         stt_chunk_size = int(getattr(args, "stt_chunk_size", 4))
@@ -579,6 +606,7 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
             gt_length_ctc,
             zero_infinity=True,
         )
+        _debug_stage(args, "ctc_loss_done", batch=batch_idx, input_steps=int(emission_recon.size(dim=1)))
         if loss_ctc.device != loss_recon.device:
             loss_ctc = loss_ctc.to(loss_recon.device)
     else:
@@ -607,8 +635,11 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
         cer_recon = CER(transcript_recon, gt_label)
 
     if trainValid:
+        _debug_stage(args, "generator_backward_start", batch=batch_idx)
         loss_g.backward()
+        _debug_stage(args, "generator_backward_done", batch=batch_idx)
         optimizer_g.step()
+        _debug_stage(args, "generator_step_done", batch=batch_idx)
         torch.cuda.empty_cache()
 
     e_loss_g = (loss_g.item(), loss_recon.item(), loss_valid.item(), loss_ctc.item())
@@ -753,7 +784,7 @@ def main(args):
     if args.vocoder_type == "hifigan_16k":
         args.sample_rate_mel = TorchaudioHiFiGAN16k.SAMPLE_RATE  # 16000
         vocoder = TorchaudioHiFiGAN16k(device=args.ctc_torch_device)
-        print(f"Using torchaudio HiFi-GAN 16kHz vocoder (sample_rate={args.sample_rate_mel})")
+        print(f"Using HF HiFi-GAN 16kHz vocoder (sample_rate={args.sample_rate_mel})")
     elif args.vocoder_type == "griffinlim":
         args.sample_rate_mel = 16000
         n_mels = int(getattr(h_g, "num_mels", 80))
@@ -912,7 +943,7 @@ def main(args):
         speech_type=args.task,
     )
     train_loader = torch.utils.data.DataLoader(
-        trainset, batch_size=args.batch_size, shuffle=True, generator=generator, num_workers=4*len(args.gpuNum), pin_memory=True)
+        trainset, batch_size=args.batch_size, shuffle=True, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=False)
     
     valset = myDataset(
         mode=2,
@@ -926,7 +957,7 @@ def main(args):
         speech_type=args.task,
     )
     val_loader = torch.utils.data.DataLoader(
-        valset, batch_size=args.batch_size, shuffle=False, generator=generator, num_workers=4*len(args.gpuNum), pin_memory=True)
+        valset, batch_size=args.batch_size, shuffle=False, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=False)
 
     epoch = start_epoch
     lr_g = 0
@@ -1043,15 +1074,18 @@ if __name__ == '__main__':
     parser.add_argument('--model_config', type=str, default='./models', help='config for G & D folder path')
     parser.add_argument('--dataLoc', type=str, default=dataDir)
     parser.add_argument('--eeg_csp_path', type=str, default=dataDir, help='root EEG directory (contains subjXX folders)')
-    parser.add_argument('--audio_mel_path', type=str, default=audioDir, help='audio mel directory with audio*_logmel.csv')
+    parser.add_argument('--audio_mel_path', type=str, default=audioDir, help='audio mel spectrograms directory with audio*_logmel.csv')
     parser.add_argument('--audio_wav_path', type=str, default=audioWavDir, help='audio waveform directory with audio*.wav')
     parser.add_argument('--config', type=str, default='./config_params.json')
     parser.add_argument('--logDir', type=str, default=logDir)
-    parser.add_argument('--resume', type=bool, default=True)
+    parser.add_argument('--resume', type=bool, default=False)
     parser.add_argument('--pretrain', type=bool, default=False)
     parser.add_argument('--prefreeze', type=bool, default=False)
     parser.add_argument('--gpuNum', nargs='+', type=int, default=[0])
     parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--debug_batch_trace', type=int, choices=[0, 1], default=0, help='Print the last successful training stage for each batch')
+    parser.add_argument('--debug_cuda_sync', type=int, choices=[0, 1], default=0, help='Synchronize CUDA after each debug stage to localize silent kernel failures')
+    parser.add_argument('--debug_cuda_memory', type=int, choices=[0, 1], default=0, help='Print allocated and reserved CUDA memory at each debug stage')
     parser.add_argument('--sub', nargs='+', type=int, default=[18])
     parser.add_argument('--task', type=str, default='imagined_speech')
 

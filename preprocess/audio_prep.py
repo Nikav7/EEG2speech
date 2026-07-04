@@ -24,8 +24,8 @@ TARGET_SR = 16000
 TARGET_DURATION_S = 2.0
 PREPEND_SILENCE_S = 0.1
 
-WIN_MS = 250.0
-HOP_MS = 25.0
+#WIN_MS = 250.0 not used, windowing done as in hi-fiGAN train data, 1024 for the fft, see def compute_mel_spectrograms
+#HOP_MS = 25.0 not used, windowing done as in hi-fiGAN train data, 256 hop for the fft, see def compute_mel_spectrograms
 N_MELS = 80
 FMIN = 20.0
 FMAX = 8000.0

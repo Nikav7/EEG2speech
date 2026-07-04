@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 import torch
 import glob
-from torch.nn.utils import weight_norm
+from torch.nn.utils.parametrizations import weight_norm
 
 def audio_denorm(data):
     max_audio = 32768.0
