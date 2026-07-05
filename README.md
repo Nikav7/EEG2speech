@@ -7,7 +7,7 @@ Different models are implied to perform the main task --> models\
 
 The main experiment in train.py runs in a GAN framework with 2 dilated convolutional networks for the Generator and the Discriminator respectively outputting and taking as input full Mel spectrograms, leveraging the power of 2 pre-trained models: one for vocoding (Hi-fi GAN Universal V1[^2]) and one for wavs embedding and Automatic Speech Recognition (wav2vec-base960hours[^3])
 
-The main GAN and the approach is directly inspired by [^1].
+The main GAN framework and the approach is directly inspired by [^1].
 
 ## Train
 

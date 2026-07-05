@@ -1,4 +1,5 @@
 import os
+import importlib
 
 # TensorBoard loads TensorFlow internally; keep startup logs quiet and deterministic.
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
@@ -230,16 +231,46 @@ def _stt_forward_chunked(model_stt, wave, chunk_size, requires_grad):
     if requires_grad:
         for start in range(0, batch_size, chunk_size):
             end = min(start + chunk_size, batch_size)
-            em, _ = model_stt(wave[start:end])
+            output = model_stt(wave[start:end])
+            if hasattr(output, "logits"):
+                em = output.logits
+            elif isinstance(output, (tuple, list)):
+                em = output[0]
+            else:
+                em = output
             emissions.append(em)
     else:
         with torch.no_grad():
             for start in range(0, batch_size, chunk_size):
                 end = min(start + chunk_size, batch_size)
-                em, _ = model_stt(wave[start:end])
+                output = model_stt(wave[start:end])
+                if hasattr(output, "logits"):
+                    em = output.logits
+                elif isinstance(output, (tuple, list)):
+                    em = output[0]
+                else:
+                    em = output
                 emissions.append(em)
 
     return torch.cat(emissions, dim=0)
+
+
+def _word_index_from_tokenizer(word_label, tokenizer):
+    tokenized_words = []
+    max_len = 0
+    for word in word_label:
+        token_ids = tokenizer(str(word), add_special_tokens=False).input_ids
+        tokenized_words.append(token_ids)
+        max_len = max(max_len, len(token_ids))
+
+    word_indices = np.zeros((len(word_label), max_len), dtype=np.int64)
+    word_length = np.zeros((len(word_label),), dtype=np.int64)
+    for idx, token_ids in enumerate(tokenized_words):
+        if token_ids:
+            word_indices[idx, : len(token_ids)] = np.asarray(token_ids, dtype=np.int64)
+        word_length[idx] = len(token_ids)
+
+    return word_indices, word_length
 def _debug_stage(args, stage, **kwargs):
     if not bool(getattr(args, "debug_batch_trace", False)):
         return
@@ -813,18 +844,45 @@ def main(args):
         "wav2vec2_large_960h": torchaudio.pipelines.WAV2VEC2_ASR_LARGE_960H,
         "hubert_large": torchaudio.pipelines.HUBERT_ASR_LARGE,
     }
-    if stt_backbone not in stt_bundle_map:
+    if stt_backbone != "wav2vecft" and stt_backbone not in stt_bundle_map:
         raise ValueError(
             f"Unsupported stt_backbone: {stt_backbone}. "
-            "Use 'wav2vec2_base_960h', 'wav2vec2_large_960h', or 'hubert_large'."
+            "Use 'wav2vecFT', 'wav2vec2_base_960h', 'wav2vec2_large_960h', or 'hubert_large'."
         )
 
-    bundle = stt_bundle_map[stt_backbone]
-    model_STT = bundle.get_model().to(args.ctc_torch_device)
-    args.sample_rate_STT = int(bundle.sample_rate)
-    print(f"Using STT backbone: {stt_backbone} (sample_rate={args.sample_rate_STT}, device={args.ctc_torch_device})")
-    decoder_STT = GreedyCTCDecoder(labels=bundle.get_labels())
-    args.word_index, args.word_length = word_index(args.word_label, bundle)
+    if stt_backbone == "wav2vecft":
+        if not args.wav2vec_ft_dir or not os.path.isdir(args.wav2vec_ft_dir):
+            raise FileNotFoundError(f"Fine-tuned wav2vec directory not found: {args.wav2vec_ft_dir}")
+
+        transformers_mod = importlib.import_module("transformers")
+        AutoModelForCTC = getattr(transformers_mod, "AutoModelForCTC")
+        AutoProcessor = getattr(transformers_mod, "AutoProcessor")
+
+        processor_stt = AutoProcessor.from_pretrained(args.wav2vec_ft_dir)
+        model_STT = AutoModelForCTC.from_pretrained(args.wav2vec_ft_dir).to(args.ctc_torch_device)
+        args.sample_rate_STT = int(getattr(processor_stt.feature_extractor, "sampling_rate", 16000))
+
+        vocab = processor_stt.tokenizer.get_vocab()
+        labels = [""] * len(vocab)
+        for token, token_id in vocab.items():
+            if 0 <= int(token_id) < len(labels):
+                labels[int(token_id)] = token
+
+        blank_id = processor_stt.tokenizer.pad_token_id if processor_stt.tokenizer.pad_token_id is not None else 0
+        decoder_STT = GreedyCTCDecoder(labels=labels, blank=blank_id)
+        args.word_index, args.word_length = _word_index_from_tokenizer(args.word_label, processor_stt.tokenizer)
+        print(
+            f"Using STT backbone: {stt_backbone} from {args.wav2vec_ft_dir} "
+            f"(sample_rate={args.sample_rate_STT}, device={args.ctc_torch_device})"
+        )
+    else:
+        bundle = stt_bundle_map[stt_backbone]
+        model_STT = bundle.get_model().to(args.ctc_torch_device)
+        args.sample_rate_STT = int(bundle.sample_rate)
+        print(f"Using STT backbone: {stt_backbone} (sample_rate={args.sample_rate_STT}, device={args.ctc_torch_device})")
+        decoder_STT = GreedyCTCDecoder(labels=bundle.get_labels())
+        args.word_index, args.word_length = word_index(args.word_label, bundle)
+
     args.audio_wavs = _load_audio_waveforms(args.audio_wav_path, args.sample_rate_STT)
     
     # Parallel setting
@@ -1094,10 +1152,11 @@ if __name__ == '__main__':
     parser.add_argument('--recon', type=str, default='Y_mel')
     parser.add_argument('--unseen', type=str, default='stop')
     parser.add_argument('--stt_chunk_size', type=int, default=2)
-    parser.add_argument('--stt_backbone', type=str, default='wav2vec2_base_960h', choices=['wav2vec2_base_960h', 'wav2vec2_large_960h', 'hubert_large'])
+    parser.add_argument('--stt_backbone', type=str, default='wav2vecFT', choices=['wav2vecFT','wav2vec2_base_960h', 'wav2vec2_large_960h', 'hubert_large'])
+    parser.add_argument('--wav2vec_ft_dir', type=str, default='./wav2vec2_finetuned/best_by_cer33/', help='fine-tuned Hugging Face wav2vec CTC checkpoint directory')
     parser.add_argument('--ctc_device', type=str, default='cpu', choices=['cuda', 'cpu'], help='device for vocoder+STT+CTC branch')
     parser.add_argument('--cer_every_n_batches', type=int, default=6)
-    parser.add_argument('--compute_cer_in_val', type=bool, default=False)
+    parser.add_argument('--compute_cer_in_val', type=bool, default=True)
     
     args = parser.parse_args()
     
