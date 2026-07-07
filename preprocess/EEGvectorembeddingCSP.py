@@ -525,7 +525,8 @@ def run_vector_embedding_pipeline(
     *,
     numcsp: int = 4,
     n_sess: int = 16,
-    num_class: int = 74,
+    num_class: int = 13,
+    label_num_class: int = 74,
     n_fold: int = 5,
     seed: int = 0,
     trials_per_class: int | None = None,
@@ -534,7 +535,7 @@ def run_vector_embedding_pipeline(
     augment_target_per_class: int = 15,
     augment_noise_std: float = 1e-4,
 ) -> Dict[str, np.ndarray]:
-    """Run MATLAB-like vector embedding CSP flow using MNE CSP.
+    """Run MATLAB-like vector embedding CSP flow using manual CSP algo, loading with mne.
 
     Returns keys:
       imagined_train, imagined_test, imagined_val,
@@ -553,9 +554,32 @@ def run_vector_embedding_pipeline(
     y_at_dec = to_decoded_labels(y_attempted)
     y_li_dec = to_decoded_labels(y_listening)
 
+    # Keep class cardinality fixed (label_num_class), but normalize sparse/shifted
+    # label IDs to contiguous 1..label_num_class so split enforcement remains valid.
+    im_unique = np.unique(y_im_dec)
+    at_unique = np.unique(y_at_dec)
+    li_unique = np.unique(y_li_dec)
+
+    if im_unique.size != label_num_class:
+        raise ValueError(
+            f"Imagined labels contain {im_unique.size} classes, expected {label_num_class}."
+        )
+    if not np.array_equal(im_unique, at_unique) or not np.array_equal(im_unique, li_unique):
+        raise ValueError(
+            "Imagined/attempted/listening label sets differ; cannot build a consistent 74-class mapping."
+        )
+
+    target = np.arange(1, label_num_class + 1, dtype=np.int32)
+    if not np.array_equal(im_unique, target):
+        label_map = {int(old): int(new) for old, new in zip(im_unique.tolist(), target.tolist())}
+        y_im_dec = np.asarray([label_map[int(v)] for v in y_im_dec], dtype=np.int32)
+        y_at_dec = np.asarray([label_map[int(v)] for v in y_at_dec], dtype=np.int32)
+        y_li_dec = np.asarray([label_map[int(v)] for v in y_li_dec], dtype=np.int32)
+        print("Info: remapped class IDs to contiguous 1..label_num_class for split stability")
+
     split = make_split_indices(
         y_dec=y_im_dec,
-        num_class=num_class,
+        num_class=label_num_class,
         n_fold=n_fold,
         seed=seed,
         trials_per_class=trials_per_class,
@@ -586,9 +610,9 @@ def run_vector_embedding_pipeline(
     y_val_li = y_li_dec[listening_split.val]
 
     # Attempted splits are built by class-wise matching to imagined split labels for CSP training.
-    x_tr_sp, y_tr_sp = _match_attempted_to_labels(x_attempted, y_at_dec, y_tr_im, num_class)
-    x_ts_sp, y_ts_sp = _match_attempted_to_labels(x_attempted, y_at_dec, y_ts_im, num_class)
-    x_val_sp, y_val_sp = _match_attempted_to_labels(x_attempted, y_at_dec, y_val_im, num_class)
+    x_tr_sp, y_tr_sp = _match_attempted_to_labels(x_attempted, y_at_dec, y_tr_im, label_num_class)
+    x_ts_sp, y_ts_sp = _match_attempted_to_labels(x_attempted, y_at_dec, y_ts_im, label_num_class)
+    x_val_sp, y_val_sp = _match_attempted_to_labels(x_attempted, y_at_dec, y_val_im, label_num_class)
     
     
     print("\nSplit sizes before augmentation:")
@@ -601,7 +625,7 @@ def run_vector_embedding_pipeline(
         x_tr_im,
         x_tr_sp,
         y_tr_im,
-        num_class=num_class,
+        num_class=label_num_class,
         target_per_class=augment_target_per_class,
         noise_std=augment_noise_std,
         rng=rng,
@@ -627,6 +651,7 @@ def run_vector_embedding_pipeline(
     x_tr_both = np.concatenate([x_tr_im, x_tr_sp], axis=0)
     y_tr_both = np.concatenate([y_train_dec, y_tr_sp], axis=0)
 
+    # CSP class-count is controlled independently from label/split class-count.
     y_tr_one_hot = np.zeros((num_class, y_tr_both.shape[0]), dtype=np.int32)
     for cls in range(1, num_class + 1):
         y_tr_one_hot[cls - 1, y_tr_both == cls] = 1
@@ -758,6 +783,13 @@ def prepare_vector_embedding_inputs(
     x_attempted = x_attempted[at_mask]
     y_attempted = y_attempted[at_mask]
 
+    # Normalize to contiguous 1..K labels to keeep the downstream split logic valid
+    # class IDs 1..label_num_class even when raw event codes are sparse. (for subj 15)
+    class_map = {int(cls): idx + 1 for idx, cls in enumerate(np.sort(common_classes))}
+    y_imagined = np.asarray([class_map[int(v)] for v in y_imagined], dtype=np.int32)
+    y_listening = np.asarray([class_map[int(v)] for v in y_listening], dtype=np.int32)
+    y_attempted = np.asarray([class_map[int(v)] for v in y_attempted], dtype=np.int32)
+
     return x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening
 
 
@@ -856,10 +888,33 @@ def save_splits_to_csv(
 
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="CSP vector-embedding preprocessing")
+    parser.add_argument(
+        "--subjects",
+        nargs="+",
+        type=int,
+        default=[15, 16, 17, 18, 19],
+        help="Subject IDs to process, e.g. --subjects 15 16 17 18 19",
+    )
+    parser.add_argument(
+        "--eeg-data-dir",
+        default="clean_data01-120Hz",
+        help="Directory containing clean_eeg_subjXX.npy and events_subjXX.npy files.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="eegdata15to19",
+        help="Output root directory for per-subject split CSVs.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     print("MATLAB-like vector_embedding pipeline custom csp multi-class one-vs-all extraction")
-    eeg_data_dir = "clean_data01-120Hz"
-    output_dir = "eegdata"
+    eeg_data_dir = args.eeg_data_dir
+    output_dir = args.output_dir
     #p.add_argument("--input", type=Path, required=True, help="NPZ with x_imagined, y_imagined, x_attempted, y_attempted")
     #p.add_argument("--output", type=Path, required=True, help="Output NPZ path for CSP feature tensors")
     #return p.parse_args()
@@ -867,52 +922,66 @@ def main() -> None:
     numcsp = 4
     n_sess = 16
     num_class = 13
+    label_num_class = 74
     n_fold = 3
     seed = 0
     trials_per_class = None  # inferred from imagined data; split-wise augmentation reaches 15/class
     
-    subjects = [18]
-
-    raw_all, markers_all, code_to_name = load_data(subjects, data_dir=eeg_data_dir)
-    epochs_all = extract_epochs(raw_all, markers_all)
-    #X_raw, y_raw_class, y_raw_cond, y_raw_subject = build_arrays(epochs_all)
-
-    summarize_class_counts(epochs_all)
-
-    x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening = prepare_vector_embedding_inputs(epochs_all)
-    print(
-        "Prepared inputs | "
-        f"imagined: {x_imagined.shape}, attempted: {x_attempted.shape}, listening: {x_listening.shape}"
-    )
-
-    out = run_vector_embedding_pipeline(
-        x_imagined=x_imagined,
-        y_imagined=y_imagined,
-        x_attempted=x_attempted,
-        y_attempted=y_attempted,
-        x_listening=x_listening,
-        y_listening=y_listening,
-        numcsp=numcsp,
-        n_sess=n_sess,
-        num_class=num_class,
-        n_fold=n_fold,
-        seed=seed,
-        trials_per_class=trials_per_class,
-        val_ratio=0.2,
-        test_ratio=0.1,
-    )
+    subjects = sorted(set(args.subjects))
+    print(f"Subjects to process: {subjects}")
 
     os.makedirs(output_dir, exist_ok=True)
-    np.savez_compressed(os.path.join(output_dir, "csp_features_sub18.npz"), **out)
-    save_splits_to_csv(out, output_dir, subjects[0], "imagined_speech", "imagined")
-    save_splits_to_csv(out, output_dir, subjects[0], "attempted_speech", "attempted")
-    save_splits_to_csv(out, output_dir, subjects[0], "listening", "listening", label_prefix="listening")
-    print(f"Saved CSP features to: {os.path.join(output_dir, 'csp_features_sub18.npz')}")
-    for key, value in out.items():
-        if isinstance(value, np.ndarray):
-            print(f"  {key}: {value.shape}")
-            if value.ndim >= 1 and value.shape[0] > 0:
-                print(f"  single epoch shape: {value[0].shape}")
+    for subject_id in subjects:
+        print(f"\n=== Processing subject {subject_id} ===")
+        raw_all, markers_all, code_to_name = load_data([subject_id], data_dir=eeg_data_dir)
+        if not raw_all:
+            print(f"Subject {subject_id}: no data loaded, skipping")
+            continue
+
+        epochs_all = extract_epochs(raw_all, markers_all)
+        summarize_class_counts(epochs_all)
+
+        x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening = prepare_vector_embedding_inputs(epochs_all)
+        print(
+            "Prepared inputs | "
+            f"imagined: {x_imagined.shape}, attempted: {x_attempted.shape}, listening: {x_listening.shape}"
+        )
+
+        subject_label_num_class = label_num_class
+        if subject_id == 15:
+            subject_label_num_class = int(np.unique(y_imagined).size)
+            print(
+                f"Subject 15 override: using label_num_class={subject_label_num_class} "
+                f"instead of {label_num_class}"
+            )
+
+        out = run_vector_embedding_pipeline(
+            x_imagined=x_imagined,
+            y_imagined=y_imagined,
+            x_attempted=x_attempted,
+            y_attempted=y_attempted,
+            x_listening=x_listening,
+            y_listening=y_listening,
+            numcsp=numcsp,
+            n_sess=n_sess,
+            num_class=num_class,
+            label_num_class=subject_label_num_class,
+            n_fold=n_fold,
+            seed=seed,
+            trials_per_class=trials_per_class,
+            val_ratio=0.2,
+            test_ratio=0.1,
+        )
+
+        save_splits_to_csv(out, output_dir, subject_id, "imagined_speech", "imagined")
+        save_splits_to_csv(out, output_dir, subject_id, "attempted_speech", "attempted")
+        save_splits_to_csv(out, output_dir, subject_id, "listening", "listening", label_prefix="listening")
+
+        for key, value in out.items():
+            if isinstance(value, np.ndarray):
+                print(f"  {key}: {value.shape}")
+                if value.ndim >= 1 and value.shape[0] > 0:
+                    print(f"  single epoch shape: {value[0].shape}")
 
 
 if __name__ == "__main__":

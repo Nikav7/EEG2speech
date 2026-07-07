@@ -13,10 +13,11 @@ import sys
 from types import SimpleNamespace
 
 
-STIMULI_DIR = r"C:\Users\lalli\Desktop\Thesis\data\TriParadigm\stimuli"
+#STIMULI_DIR = os.path.join(os.path.dirname(__file__), "..", "audiodata/twos_16000")
 EVENTS_CSV = os.path.join(os.path.dirname(__file__), "..", "events_codes.csv")
-OUTPUT_DIR = os.path.join(STIMULI_DIR, "twos_16000")
-AUDIODATA_DIR = os.path.join(os.path.dirname(__file__), "..", "audiodata")
+#OUTPUT_DIR = os.path.join(STIMULI_DIR, "twos_16000")
+AUDIODATA_DIR = os.path.join(os.path.dirname(__file__), "..", "audiodata/twos_16000")
+WAV2VEC2FT_DIR = os.path.join(os.path.dirname(__file__), "..", "wav2vec2_finetuned", "best_by_cer33")
 
 
 SR = 24000
@@ -409,7 +410,7 @@ def vocode_grifflim(output_dir: str):
         M=mel_power,
         sr=TARGET_SR,
         n_fft=1024,
-        hop_length=512,
+        hop_length=256,
         win_length=1024,
         window="hann",
         center=False,
@@ -441,14 +442,26 @@ def vocode_hifi(output_dir: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prepare processed audio features and optional wav2vec CTC metrics.")
-    parser.add_argument("--wav-dir", default=OUTPUT_DIR, help="Directory containing processed WAV files.")
+    parser.add_argument("--wav-dir", default=AUDIODATA_DIR, help="Directory containing processed WAV files.")
     parser.add_argument("--audio-data-dir", default=AUDIODATA_DIR, help="Directory for saved mel CSV files.")
-    parser.add_argument("--asr-backend", choices=["wav2vec", "hubert"], default="hubert", help="ASR backend family used for CTC scoring.")
+    parser.add_argument("--asr-backend", choices=["wav2vec2FT","wav2vec", "hubert"], default="wav2vec2FT", help="ASR backend family used for CTC scoring.")
+    parser.add_argument("--wav2vec2FT-dir", default=WAV2VEC2FT_DIR, help="Local path to a fine-tuned wav2vec2 CTC checkpoint directory.")
     parser.add_argument("--ctc-model", default=None, help="Optional Hugging Face CTC ASR model name. If omitted, uses default for --asr-backend.")
-    parser.add_argument("--ctc-output-csv", default=None, help="Optional CSV path for per-file CTC metrics.")
+    parser.add_argument("--ctc-output-csv", default=os.path.join(WAV2VEC2FT_DIR, "ctc_metrics.csv"), help="Optional CSV path for per-file CTC metrics.")
     args = parser.parse_args()
 
-    selected_model = args.ctc_model if args.ctc_model else DEFAULT_ASR_MODELS[args.asr_backend]
+    if args.ctc_model:
+        selected_model = args.ctc_model
+    elif args.asr_backend == "wav2vec2FT":
+        if not os.path.isdir(args.wav2vec2FT_dir):
+            raise FileNotFoundError(
+                f"wav2vec2FT directory not found: {args.wav2vec2FT_dir}. "
+                "Provide --wav2vec2FT-dir or --ctc-model."
+            )
+        selected_model = args.wav2vec2FT_dir
+    else:
+        selected_model = DEFAULT_ASR_MODELS[args.asr_backend]
+
     if args.ctc_output_csv is None:
         args.ctc_output_csv = os.path.join(args.audio_data_dir, f"{args.asr_backend}_ctc_metrics.csv")
 

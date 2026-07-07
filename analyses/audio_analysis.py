@@ -9,7 +9,8 @@ import soundfile as sf
 import torch
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
-from skimage.metrics import structural_similarity
+#from skimage.metrics import structural_similarity
+from preprocess.audio_prep import compute_mel_spectrograms
 
 import json
 import sys
@@ -20,14 +21,14 @@ STIMULI_DIR = r"C:\Users\lalli\Desktop\Thesis\data\TriParadigm\stimuli"
 OUTPUT_DIR = os.path.join(STIMULI_DIR, "all_80002s")
 NEWSTIM_DIR = os.path.join(STIMULI_DIR, "twos_22050")
 EVENTS_CSV = os.path.join(os.path.dirname(__file__), "..", "events_codes.csv")
-AUDIODATA_DIR = os.path.join(os.path.dirname(__file__), "..", "audiodata")
+AUDIODATA_DIR = os.path.join(os.path.dirname(__file__), "..", "audiodata/twos_16000")
 
 SR = 22050
 TARGET_DURATION_S = 2.0
 PREPEND_SILENCE_S = 0.1
 
-WIN_MS = 200.0
-HOP_MS = 20.0
+#WIN_MS = 200.0
+#HOP_MS = 20.0
 N_MELS = 80
 FMIN = 20.0
 FMAX = SR / 2.0
@@ -112,44 +113,6 @@ def load_processed_wavs(wav_dir: str):
         print(f"Loaded: {wav_name} ({len(waveform)/SR:.2f}s)")
     print(f"\nLoaded {len(waveforms)} files from: {wav_dir}")
     return wav_names, waveforms
-
-
-def compute_mel_spectrograms(wav_dir: str):
-    win_length = int(round(WIN_MS / 1000.0 * SR))
-    hop_length = int(round(HOP_MS / 1000.0 * SR))
-
-    wav_names = sorted(
-        [f for f in os.listdir(wav_dir) if f.lower().endswith(".wav")],
-        key=natural_key,
-    )
-    if not wav_names:
-        raise RuntimeError(f"No WAV files found in {wav_dir}")
-
-    mel_list = []
-    for wav_name in wav_names:
-        waveform, _ = librosa.load(os.path.join(wav_dir, wav_name), sr=SR, mono=True)
-        mel = librosa.feature.melspectrogram(
-            y=waveform,
-            sr=SR,
-            n_fft=win_length, #use 1600 as win_length to have a coarse temporal resolution but a fine freq. res., even if unconventional for 8kHz audio. This is because we want to capture the full 2s duration in a manageable number of frames.
-            hop_length=hop_length,
-            win_length=win_length,
-            window="hann",
-            center=False,
-            power=2.0,
-            n_mels=N_MELS,
-            fmin=FMIN,
-            fmax=FMAX,
-        )
-        log_mel = librosa.power_to_db(mel + 1e-10, ref=np.max).astype(np.float32)
-        mel_list.append(log_mel)
-        print(f"{wav_name}: mel shape {log_mel.shape}")
-
-    mel_arr = np.stack(mel_list, axis=0)  # [N, N_MELS, T]
-    out_path = os.path.join(wav_dir, "log_mel.npy")
-    np.save(out_path, mel_arr)
-    print(f"\nSaved mel spectrograms: {mel_arr.shape} -> {out_path}")
-    return mel_arr
 
 
 def load_log_mel_csvs(csv_dir: str) -> tuple:
@@ -388,7 +351,7 @@ def ms_ssim_pairwise_matrix(
     then combines them as a weighted sum with `weights` (must sum to 1).
     mel_arr: [N, N_MELS, T]
     """
-    from skimage.transform import rescale
+    #from skimage.transform import rescale
 
     assert len(weights) == scales and abs(sum(weights) - 1.0) < 1e-6
 

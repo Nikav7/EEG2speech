@@ -1,10 +1,10 @@
 {
     "max_epochs": 1000,
     "l_g": [1, 0.01, 0.01],
-    "lr_g": 0.0001,
+    "lr_g": 0.000061167,
     "lr_g_decay": 0.999,
     "l_d": [1, 1],
-    "lr_d": 0.0001,
+    "lr_d": 0.000061167,
     "lr_d_decay": 0.999,
     "seed": 42,
     "sampling_rate": 22050,
@@ -88,4 +88,4 @@
         "Ribbon",
         "Palm"
     ],
-    "word_label": ["HELLO|", "YES|", "NO|", "YA|", "SE|", "AFRI|", "FA|", "OH|", "DEM|", "LEFT|", "WHY|", "LITS|", "DO|", "HEAD|", "HEM|", "ARS|", "LAG|", "MAKES|", "HART|", "HAOMES|", "FORIT|", "FETS|", "SIRO|", "ON|", "WHEW|", "OY|", "EMIRE|", "FOGS|", "SIX|", "SEVEN|", "THEDS|", "NINE|", "TILES|", "SLA|", "GRA|ON|", "BEFORE|", "NEW|", "AFO|", "YESTERDAY|", "TO|DAY|", "TOM|EMLY|", "SHOLER|", "WASH|", "RATH|", "EA|", "YAWDER|", "SON|", "HANYEU|", "ASISTEN|", "MERSE|", "MERSY|", "HURY|", "CHIR|", "YELO|", "WHAT|", "WHEL|", "WHEN|", "WHY|", "WHO|", "HOW|", "A|YOU|", "I|NED|", "I|WANT|", "I|CHAN|", "AR|KINS|", "SURE|", "SURE|I|", "H|", "HY|", "HEARTS|", "HOES|", "EH|", "REBEN|", "HEAVEN|"] }
+    "word_label": ["HELLO|", "YES|", "NO|", "WATER|", "TEA|", "COFFEE|", "FOOD|", "UP|", "DOWN|", "LEFT|", "RIGHT|", "LIGHT|", "DARK|", "HEAD|", "ARM|", "ARMS|", "LEG|", "LEGS|", "HEART|", "HANDS|", "FOOT|", "FEET|", "ZERO|", "ONE|", "TWO|", "THREE|", "FOUR|", "FIVE|", "SIX|", "SEVEN|", "EIGHT|", "NINE|", "TIMES|", "STOP|", "GO|ON|", "BEFORE|", "NOW|", "AFTER|", "YESTERDAY|", "TODAY|", "TOMORROW|", "SHOWER|", "WASH|", "BATH|", "LOVE|", "DAUGHTER|", "SON|", "PARTNER|", "ASSISTANT|", "NURSE|", "MUSIC|", "DRINK|", "JAM|", "YELLOW|", "WHAT|", "WHERE|", "WHEN|", "WHY|", "WHO|", "HOW|", "THANK|YOU|", "I|NEED|", "I|WANT|", "I|CAN|", "I|CANT|", "SURE|", "JOY|", "HELP|", "WHET|", "HOT|", "COLD|", "EGG|", "RIBBON|", "PALM|"] }

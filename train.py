@@ -1,5 +1,6 @@
 import os
 import importlib
+import glob
 
 # TensorBoard loads TensorFlow internally; keep startup logs quiet and deterministic.
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
@@ -27,13 +28,28 @@ import csv
 import wavio
 from torch.utils.tensorboard import SummaryWriter
 
-def save_checkpoint(state, is_best, save_dir, filename):
+def save_checkpoint(state, is_best, save_dir, filename, epoch=None):
     os.makedirs(save_dir, exist_ok=True)
     ckpt_path = os.path.join(save_dir, filename)
     torch.save(state, ckpt_path)
     if is_best:
-        best_path = os.path.join(save_dir, f"BEST_{filename}")
-        torch.save(state, best_path)
+        base_name, ext = os.path.splitext(filename)
+        if epoch is not None:
+            best_path = os.path.join(save_dir, f"BEST_{base_name}_epoch{int(epoch)}{ext}")
+            torch.save(state, best_path)
+        legacy_best_path = os.path.join(save_dir, f"BEST_{filename}")
+        torch.save(state, legacy_best_path)
+
+
+def _latest_best_checkpoint_path(trained_model_dir, sub_tag, prefix):
+    pattern = os.path.join(trained_model_dir, sub_tag, f"BEST_{prefix}_epoch*.pt")
+    matches = sorted(glob.glob(pattern))
+    if matches:
+        return matches[-1]
+    legacy_path = os.path.join(trained_model_dir, sub_tag, f"BEST_{prefix}.pt")
+    if os.path.isfile(legacy_path):
+        return legacy_path
+    return None
 
 
 METRICS_CSV_COLUMNS = [
@@ -940,17 +956,17 @@ def main(args):
     # Load trained model
     start_epoch = 0
     if args.pretrain:
-        loc_g = os.path.join(args.trained_model, sub_tag, 'BEST_checkpoint_g.pt')
-        loc_d = os.path.join(args.trained_model, sub_tag, 'BEST_checkpoint_d.pt')
+        loc_g = _latest_best_checkpoint_path(args.trained_model, sub_tag, 'checkpoint_g')
+        loc_d = _latest_best_checkpoint_path(args.trained_model, sub_tag, 'checkpoint_d')
 
-        if os.path.isfile(loc_g):
+        if loc_g and os.path.isfile(loc_g):
             print("=> loading checkpoint '{}'".format(loc_g))
             checkpoint_g = torch.load(loc_g, map_location='cpu')
             model_g.load_state_dict(checkpoint_g['state_dict'])
         else:
             print("=> no checkpoint found at '{}'".format(loc_g))
 
-        if os.path.isfile(loc_d):
+        if loc_d and os.path.isfile(loc_d):
             print("=> loading checkpoint '{}'".format(loc_d))
             checkpoint_d = torch.load(loc_d, map_location='cpu')
             model_d.load_state_dict(checkpoint_d['state_dict'])
@@ -1076,8 +1092,8 @@ def main(args):
         else:
             epochs_since_improvement = 0
 
-        save_checkpoint(state_g, is_best, args.savemodel, 'checkpoint_g.pt')
-        save_checkpoint(state_d, is_best, args.savemodel, 'checkpoint_d.pt')
+        save_checkpoint(state_g, is_best, args.savemodel, 'checkpoint_g.pt', epoch=epoch)
+        save_checkpoint(state_d, is_best, args.savemodel, 'checkpoint_d.pt', epoch=epoch)
 
         if (epoch % 10) == 0:
             saveData(args, val_loader, (model_g, model_d, vocoder, model_STT, decoder_STT), epoch, (Tr_losses,Val_losses))
@@ -1121,13 +1137,13 @@ def main(args):
 
 if __name__ == '__main__':
 
-    dataDir = './eegdata'
+    dataDir = './eegdata15to18'
     audioDir = './audiodata/logmel22'
     audioWavDir = './audiodata/twos_22050'
-    logDir = './TrainResult'
+    logDir = './TrainResult1518'
     
     parser = argparse.ArgumentParser(description='Hyperparams')
-    parser.add_argument('--max_epochs', type=int, default=1500)
+    parser.add_argument('--max_epochs', type=int, default=1000)
     parser.add_argument('--vocoder_pre', type=str, default='UNIVERSAL_V1/g_02500000', help='pretrained vocoder file path')
     parser.add_argument('--vocoder_type', type=str, default='hifigan', choices=['hifigan', 'hifigan_16k', 'griffinlim'], help='vocoder backend to synthesize waveform from mel')
     parser.add_argument('--trained_model', type=str, default=None, help='trained model for G & D folder path')
@@ -1146,16 +1162,15 @@ if __name__ == '__main__':
     parser.add_argument('--debug_batch_trace', type=int, choices=[0, 1], default=0, help='Print the last successful training stage for each batch')
     parser.add_argument('--debug_cuda_sync', type=int, choices=[0, 1], default=0, help='Synchronize CUDA after each debug stage to localize silent kernel failures')
     parser.add_argument('--debug_cuda_memory', type=int, choices=[0, 1], default=0, help='Print allocated and reserved CUDA memory at each debug stage')
-    parser.add_argument('--sub', nargs='+', type=int, default=[18])
+    parser.add_argument('--sub', nargs='+', type=int, default=[15,16,17,18])
     parser.add_argument('--task', type=str, default='imagined_speech')
 
     parser.add_argument('--recon', type=str, default='Y_mel')
-    parser.add_argument('--unseen', type=str, default='stop')
-    parser.add_argument('--stt_chunk_size', type=int, default=2)
+    parser.add_argument('--stt_chunk_size', type=int, default=4)
     parser.add_argument('--stt_backbone', type=str, default='wav2vecFT', choices=['wav2vecFT','wav2vec2_base_960h', 'wav2vec2_large_960h', 'hubert_large'])
     parser.add_argument('--wav2vec_ft_dir', type=str, default='./wav2vec2_finetuned/best_by_cer33/', help='fine-tuned Hugging Face wav2vec CTC checkpoint directory')
     parser.add_argument('--ctc_device', type=str, default='cpu', choices=['cuda', 'cpu'], help='device for vocoder+STT+CTC branch')
-    parser.add_argument('--cer_every_n_batches', type=int, default=6)
+    parser.add_argument('--cer_every_n_batches', type=int, default=4)
     parser.add_argument('--compute_cer_in_val', type=bool, default=True)
     
     args = parser.parse_args()

@@ -2,13 +2,17 @@ __pycache__/
 .venv/
 .vscode/
 eegdata/
+eegdata15to18/
+eegdata15to19
 best_models/
 clean_data01-120Hz/
 inprogress/
 inference22kHz540/
 TrainResult/
 TrainResult16kHz/
+TrainResult22kHz_384/
 TrainResult22kHz_540/
 TrainResult22kHz_679/
 preprocess/olds/
 wav2vec2_finetuned/
+toignore/
