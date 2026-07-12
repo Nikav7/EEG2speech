@@ -22,7 +22,7 @@ AUDIODATA_DIR = os.path.join(PROJECT_ROOT, "audiodata", "twos_16000")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "wav2vec2_finetuned")
 
 W2V_MODEL_NAME = "facebook/wav2vec2-base-960h"
-hf_TOKEN = "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"
+hf_TOKEN = ""
 #check powershell echo $env:HF_TOKEN
 
 def _set_seed(seed: int, deterministic: bool = True) -> None:
