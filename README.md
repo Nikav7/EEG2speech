@@ -9,6 +9,8 @@ The main experiment in train.py runs in a GAN framework with 2 dilated convoluti
 
 The main GAN framework and the approach is directly inspired by [^1].
 
+The EEG features used to train the models have been extracted training Common Spatial Filters (CSP) in Python on imagined and attempted speech with splits train/val/test, keeping test out from filters' training. The final data used for training the GAN are just trials from imagined speech, passed with the filters mentioned above.
+
 ## Train
 
 The project is run in a Python venv with Python 3.11.9. CUDA V12.1.66 for parallel computing.
