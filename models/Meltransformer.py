@@ -1,6 +1,12 @@
-# multi-layered transformer inspired by the work of Wairagkar, 2025.
-# Adapted for CSP EEG -> mel-spectrogram sequence synthesis.
+# multi-layered (frame-by-frame) transformer inspired by the work of Wairagkar, 2025.
+# Adapted for CSP EEG -> mel-spectrogram seq2seq synthesis.
 # PyTorch version Veronica Valente (RUG), 2025/2026
+
+#PIPELINE: 
+# [EEG Timeline] -> [Transformer Generator] -> [Predicted Spectrogram]
+# [Generated Mel] -> [vocoding, e.g. HiFi-GAN, default griffin-lim] -> [Waveform Tensor] -> [Wav2Vec2] -> [Continuous Logits] -> [CTC Loss] -> (Backpropagation)
+
+
 
 import torch
 import torch.nn as nn
