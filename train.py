@@ -64,6 +64,7 @@ METRICS_CSV_COLUMNS = [
     "train_cer_gt",
     "train_cer_recon",
     "train_loss_d",
+    "train_loss_d_cl",
     "train_acc_d_real",
     "train_acc_d_fake",
     "val_loss_g",
@@ -74,6 +75,7 @@ METRICS_CSV_COLUMNS = [
     "val_cer_gt",
     "val_cer_recon",
     "val_loss_d",
+    "val_loss_d_cl",
     "val_acc_d_real",
     "val_acc_d_fake",
     "best_val_loss_so_far",
@@ -493,8 +495,8 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
              args.loss_g_recon, args.loss_g_valid, args.loss_g_ctc))
         
         
-    return (args.loss_g, args.loss_g_recon, args.loss_g_valid, args.loss_g_ctc, args.acc_g_valid, args.cer_gt, args.cer_recon, 
-            args.loss_d, args.acc_d_real, args.acc_d_fake)
+    return (args.loss_g, args.loss_g_recon, args.loss_g_valid, args.loss_g_ctc, args.acc_g_valid, args.cer_gt, args.cer_recon,
+            args.loss_d, args.loss_d_cl, args.acc_d_real, args.acc_d_fake)
 
 
 def train_G(args, input, target, voice, labels, models, criterions, optimizer_g, data_info, trainValid, phase_is_train=True, batch_idx=0):
@@ -1112,8 +1114,9 @@ def main(args):
             "train_cer_gt": float(Tr_losses[5]),
             "train_cer_recon": float(Tr_losses[6]),
             "train_loss_d": float(Tr_losses[7]),
-            "train_acc_d_real": float(Tr_losses[8]),
-            "train_acc_d_fake": float(Tr_losses[9]),
+            "train_loss_d_cl": float(Tr_losses[8]),
+            "train_acc_d_real": float(Tr_losses[9]),
+            "train_acc_d_fake": float(Tr_losses[10]),
             "val_loss_g": float(Val_losses[0]),
             "val_loss_g_recon": float(Val_losses[1]),
             "val_loss_g_valid": float(Val_losses[2]),
@@ -1122,8 +1125,9 @@ def main(args):
             "val_cer_gt": float(Val_losses[5]),
             "val_cer_recon": float(Val_losses[6]),
             "val_loss_d": float(Val_losses[7]),
-            "val_acc_d_real": float(Val_losses[8]),
-            "val_acc_d_fake": float(Val_losses[9]),
+            "val_loss_d_cl": float(Val_losses[8]),
+            "val_acc_d_real": float(Val_losses[9]),
+            "val_acc_d_fake": float(Val_losses[10]),
             "best_val_loss_so_far": float(best_loss),
             "is_best": int(is_best),
             "epoch_time_sec": float(time_taken),
@@ -1137,10 +1141,10 @@ def main(args):
 
 if __name__ == '__main__':
 
-    dataDir = './eegdata15to18'
+    dataDir = './eegdata_250sr_minaug'
     audioDir = './audiodata/logmel22'
     audioWavDir = './audiodata/twos_22050'
-    logDir = './TrainResult1518'
+    logDir = './TrainResult22kHz_4subs1518'
     
     parser = argparse.ArgumentParser(description='Hyperparams')
     parser.add_argument('--max_epochs', type=int, default=1000)
@@ -1162,7 +1166,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug_batch_trace', type=int, choices=[0, 1], default=0, help='Print the last successful training stage for each batch')
     parser.add_argument('--debug_cuda_sync', type=int, choices=[0, 1], default=0, help='Synchronize CUDA after each debug stage to localize silent kernel failures')
     parser.add_argument('--debug_cuda_memory', type=int, choices=[0, 1], default=0, help='Print allocated and reserved CUDA memory at each debug stage')
-    parser.add_argument('--sub', nargs='+', type=int, default=[15,16,17,18])
+    parser.add_argument('--sub', nargs='+', type=int, default=[15, 16, 17, 18])
     parser.add_argument('--task', type=str, default='imagined_speech')
 
     parser.add_argument('--recon', type=str, default='Y_mel')

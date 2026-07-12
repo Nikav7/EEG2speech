@@ -86,7 +86,7 @@ class GriffinLimVocoder(nn.Module):
                 super().__init__()
                 n_fft = 1024
                 n_stft = (n_fft // 2) + 1
-                hop_length = 512
+                hop_length = 256
                 win_length = 1024
                 self.inv_mel = torchaudio.transforms.InverseMelScale(
                     n_stft=n_stft,

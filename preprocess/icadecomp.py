@@ -74,7 +74,7 @@ def reconstruct_signal_from_sources(mixing_matrix, sources):
 SUBJECT_NUM = [15,16,17,18,19]
 SESSION_NUM = [3,1,1,1,1]
 
-BASE_DATA_PATH = Path(r"C:\Users\lalli\Desktop\Thesis\data\TriParadigm\experimentDATA")
+BASE_DATA_PATH = Path(r"C:\Users\hssn_\Desktop\RAWEEG\Veronica_DataThesis")
 
 
 def make_xdf_file_path(subject_num, session_num):
@@ -93,9 +93,9 @@ def process_subject_session(subject_num, session_num):
     if not xdf_file_path.exists():
         raise FileNotFoundError(f"XDF file not found: {xdf_file_path}")
 
-    output_dir = Path('extended_infomaxcomps01-120Hz') / f'subj{subject_num}'
+    output_dir = Path('extended_infomaxcomps025-120Hz') / f'subj{subject_num}'
     output_dir.mkdir(parents=True, exist_ok=True)
-    data_dir = Path('clean_data01-120Hz')
+    data_dir = Path('clean_data025-120Hz')
     data_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"============================================")
@@ -142,7 +142,7 @@ def process_subject_session(subject_num, session_num):
     # FILTERING
     # first IIR Butterworth bandpass filter 5th order between 1-120 Hz
     # to capture speech information
-    l_freq=0.1
+    l_freq=0.25
     h_freq=120.0
     order=4
     iir_params = dict(order=order, ftype='butter')
@@ -155,7 +155,8 @@ def process_subject_session(subject_num, session_num):
 
     # downsampling to 250 Hz -> AFTER FILTERING, to keep control on what spectral content is kept before sample-rate reduction
     orig_sfreq = raw_filtered.info['sfreq']
-    raw_filtered = raw_filtered.copy().resample(sfreq=250, npad="auto")
+    print(f"Original sampling frequency: {orig_sfreq} Hz")
+    #raw_filtered = raw_filtered.copy().resample(sfreq=250, npad="auto")
     markers[:, 0] = np.rint(markers[:, 0] * (raw_filtered.info['sfreq'] / orig_sfreq)).astype(int)
     raw_filtered.set_montage('standard_1020')
     #raw_filtered.plot(duration=10, events=markers, title='eeg with Events')

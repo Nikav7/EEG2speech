@@ -2,10 +2,16 @@ __pycache__/
 .venv/
 .vscode/
 eegdata/
+eegdata_250sr_minaug/
+eegdata_250sr_minaug_allconds/
 eegdata15to18/
-eegdata15to19
+eegdata15to19/
+eegdata15to19_250srNOAUG/
+eegdata15to19_1000srNOAUG/
+eegdata15to19_1000srYESAUG/
 best_models/
 clean_data01-120Hz/
+clean_data025-120Hz1000sr/
 inprogress/
 inference22kHz540/
 TrainResult/
@@ -13,6 +19,8 @@ TrainResult16kHz/
 TrainResult22kHz_384/
 TrainResult22kHz_540/
 TrainResult22kHz_679/
+TrainResult22kHz_4subs1518/
 preprocess/olds/
 wav2vec2_finetuned/
+extended_infomaxcomps025-120Hz/
 toignore/

@@ -46,7 +46,7 @@ SFREQ = 250
 #TARGET_STEPS = 85 # not used at the moment
 
 #Load
-def load_data(subjects, data_dir='clean_data01-120Hz'):
+def load_data(subjects, data_dir=None):
     event_sfreq = EVENT_SFREQ
     event_df     = pd.read_csv('events_codes.csv', header=None, names=['word', 'code', 'type'])
     code_to_name = dict(zip(event_df['code'], event_df['word'].str.strip("'")))
@@ -532,8 +532,10 @@ def run_vector_embedding_pipeline(
     trials_per_class: int | None = None,
     val_ratio: float = 0.2,
     test_ratio: float = 0.1,
-    augment_target_per_class: int = 15,
+    augment_target_per_class: int = 9, #changed to from 15 to 9 when training on 5 subjects
     augment_noise_std: float = 1e-4,
+    use_augmentation: bool = True,
+    include_listening_in_csp_train: bool = False,
 ) -> Dict[str, np.ndarray]:
     """Run MATLAB-like vector embedding CSP flow using manual CSP algo, loading with mne.
 
@@ -577,15 +579,24 @@ def run_vector_embedding_pipeline(
         y_li_dec = np.asarray([label_map[int(v)] for v in y_li_dec], dtype=np.int32)
         print("Info: remapped class IDs to contiguous 1..label_num_class for split stability")
 
-    split = make_split_indices(
-        y_dec=y_im_dec,
-        num_class=label_num_class,
-        n_fold=n_fold,
-        seed=seed,
-        trials_per_class=trials_per_class,
-        val_ratio=val_ratio,
-        test_ratio=test_ratio,
-    )
+    if use_augmentation:
+        split = make_split_indices(
+            y_dec=y_im_dec,
+            num_class=label_num_class,
+            n_fold=n_fold,
+            seed=seed,
+            trials_per_class=trials_per_class,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+        )
+    else:
+        # When augmentation is disabled, allow a plain random 70/20/10 split.
+        split = make_simple_split_indices(
+            x_imagined.shape[0],
+            seed=seed,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+        )
     listening_split = make_simple_split_indices(
         x_listening.shape[0],
         seed=seed,
@@ -620,26 +631,30 @@ def run_vector_embedding_pipeline(
     print(f"  val:   imagined={x_val_im.shape[0]}, attempted={x_val_sp.shape[0]}, listening={x_val_li.shape[0]}")
     print(f"  test:  imagined={x_ts_im.shape[0]}, attempted={x_ts_sp.shape[0]}, listening={x_ts_li.shape[0]}")
 
-    rng = np.random.RandomState(seed)
-    x_tr_im, x_tr_sp, y_train_dec = _augment_split_to_target(
-        x_tr_im,
-        x_tr_sp,
-        y_tr_im,
-        num_class=label_num_class,
-        target_per_class=augment_target_per_class,
-        noise_std=augment_noise_std,
-        rng=rng,
-    )
-    
+    if use_augmentation:
+        rng = np.random.RandomState(seed)
+        x_tr_im, x_tr_sp, y_train_dec = _augment_split_to_target(
+            x_tr_im,
+            x_tr_sp,
+            y_tr_im,
+            num_class=label_num_class,
+            target_per_class=augment_target_per_class,
+            noise_std=augment_noise_std,
+            rng=rng,
+        )
 
-    y_test_dec = y_ts_im
-    x_val_im, x_val_sp, y_val_dec = _augment_split_once(
-        x_val_im,
-        x_val_sp,
-        y_val_im,
-        noise_std=augment_noise_std,
-        rng=rng,
-    )
+        y_test_dec = y_ts_im
+        x_val_im, x_val_sp, y_val_dec = _augment_split_once(
+            x_val_im,
+            x_val_sp,
+            y_val_im,
+            noise_std=augment_noise_std,
+            rng=rng,
+        )
+    else:
+        y_train_dec = y_tr_im
+        y_test_dec = y_ts_im
+        y_val_dec = y_val_im
     
 
     print("Split sizes after augmentation:")
@@ -647,9 +662,16 @@ def run_vector_embedding_pipeline(
     print(f"  val:   imagined={x_val_im.shape[0]}, attempted={x_val_sp.shape[0]}, listening={x_val_li.shape[0]}")
     print(f"  test:  imagined={x_ts_im.shape[0]}, attempted={x_ts_sp.shape[0]}, listening={x_ts_li.shape[0]}")
 
-    # Fit shared filters on TRAIN only, using both imagined and attempted conditions.
-    x_tr_both = np.concatenate([x_tr_im, x_tr_sp], axis=0)
-    y_tr_both = np.concatenate([y_train_dec, y_tr_sp], axis=0)
+    # Fit shared filters on TRAIN only, using imagined + attempted, with optional listening.
+    x_tr_sources = [x_tr_im, x_tr_sp]
+    y_tr_sources = [y_train_dec, y_tr_sp]
+    if include_listening_in_csp_train:
+        x_tr_sources.append(x_tr_li)
+        y_tr_sources.append(y_tr_li)
+        print("Info: including listening_train in CSP filter fitting")
+
+    x_tr_both = np.concatenate(x_tr_sources, axis=0)
+    y_tr_both = np.concatenate(y_tr_sources, axis=0)
 
     # CSP class-count is controlled independently from label/split class-count.
     y_tr_one_hot = np.zeros((num_class, y_tr_both.shape[0]), dtype=np.int32)
@@ -904,8 +926,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default="eegdata15to19",
+        default="eegdata_250sr_minaug_allconds",
         help="Output root directory for per-subject split CSVs.",
+    )
+    parser.add_argument(
+        "--include-listening-in-csp-train",
+        type=bool,
+        default=True,
+        help="Include listening train samples when fitting shared CSP filters.",
     )
     return parser.parse_args()
 
@@ -926,6 +954,9 @@ def main() -> None:
     n_fold = 3
     seed = 0
     trials_per_class = None  # inferred from imagined data; split-wise augmentation reaches 15/class
+    # Debug-friendly local toggle: set False to disable augmentation.
+    use_augmentation = True
+    include_listening_in_csp_train = args.include_listening_in_csp_train
     
     subjects = sorted(set(args.subjects))
     print(f"Subjects to process: {subjects}")
@@ -971,6 +1002,8 @@ def main() -> None:
             trials_per_class=trials_per_class,
             val_ratio=0.2,
             test_ratio=0.1,
+            use_augmentation=use_augmentation,
+            include_listening_in_csp_train=include_listening_in_csp_train,
         )
 
         save_splits_to_csv(out, output_dir, subject_id, "imagined_speech", "imagined")

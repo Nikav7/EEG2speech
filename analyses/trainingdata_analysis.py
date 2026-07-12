@@ -20,19 +20,19 @@ def parse_args():
     )
     parser.add_argument(
         "--eeg-spss-dir",
-        default=os.path.join("eegdata15to18"),
+        default=os.path.join("eegdata_250sr_minaug_allconds"),
         help="Root folder containing task subfolders (e.g., imagined_speech, attempted_speech), each with train/val/test.",
     )
     parser.add_argument(
         "--subject-id",
         nargs="+",
         type=int,
-        default=[18],
+        default=[15, 16, 17, 18, 19],
         help="Subject ID for the EEG data.",
     )
     parser.add_argument(
         "--output-dir",
-        default="plots",
+        default="plotsALLcondsCSPtrain",
         help="Directory where UMAP/t-SNE plots are saved..",
     )
     parser.add_argument(
@@ -44,7 +44,7 @@ def parse_args():
     parser.add_argument(
         "--max-samples-per-split",
         type=int,
-        default=1000,
+        default=1600,
         help="Optional cap for number of trial samples per split.",
     )
     parser.add_argument(

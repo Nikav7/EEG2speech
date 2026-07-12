@@ -21,10 +21,10 @@ CONDITION_NAMES = {1: 'Imagined speech', 2: 'Listening', 3: 'Attempted speech'}
 COND_TWIN = {1: (0.0, 2.0), 2: (0.0, 2.0), 3: (0.2, 2.2)}
 
 # Windowing setup
-WIN_MS = 250 #SETUP USED BY LAST PAPER DEC 2025, DISCOVERED EMPIRICALLY!
-STRIDE_MS = 125 # SETUP DISCOVERED EMPIRICALLY
-EVENT_SFREQ = 250  # Original event sr for rescaling if needed, markers of data filtered between 0.1 and 120 are already resampled
-SFREQ = 250
+WIN_MS = 250 #SETUP to get short T dim from EEG without interpolation
+STRIDE_MS = 125 
+EVENT_SFREQ = 1000  # Original event sr for rescaling if needed, markers of data filtered between 0.1 and 120 are already resampled
+SFREQ = 1000
 #TARGET_STEPS = 85 # not used at the moment
 
 # ── 1. Load ─────────────────────────────────────────────────────
