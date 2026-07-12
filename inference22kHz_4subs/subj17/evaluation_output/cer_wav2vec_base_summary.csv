@@ -1,0 +1,35 @@
+class_label,word,generated_wav,reference_wav,generated_mel,reference_mel,cer,cer_gt,predicted_word_generated,predicted_word_groundtruth
+1,Hello!,label001_trial0017_pred_Hello.wav,audio1.wav,label001_trial0017_pred_mel.csv,audio1_logmel.csv,1.0,0.4,POER,HALO
+2,Yes!,label002_trial0015_pred_Yes.wav,audio2.wav,label002_trial0015_pred_mel.csv,audio2_logmel.csv,1.0,0.0,RA,YES
+8,Up,label008_trial0003_pred_Up.wav,audio8.wav,label008_trial0032_pred_mel.csv,audio8_logmel.csv,1.0,1.0,O,AH
+8,Up,label008_trial0032_pred_Up.wav,audio8.wav,label008_trial0032_pred_mel.csv,audio8_logmel.csv,1.0,1.0,RY,AH
+9,Down,label009_trial0000_pred_Down.wav,audio9.wav,label009_trial0000_pred_mel.csv,audio9_logmel.csv,0.75,0.0,HUN,DOWN
+10,Left,label010_trial0026_pred_Left.wav,audio10.wav,label010_trial0026_pred_mel.csv,audio10_logmel.csv,1.0,0.5,OLY,RAFT
+11,Right,label011_trial0025_pred_Right.wav,audio11.wav,label011_trial0025_pred_mel.csv,audio11_logmel.csv,1.0,0.6,,RIE
+14,Head,label014_trial0006_pred_Head.wav,audio14.wav,label014_trial0006_pred_mel.csv,audio14_logmel.csv,0.75,0.0,HO,HEAD
+15,Arm,label015_trial0029_pred_Arm.wav,audio15.wav,label015_trial0029_pred_mel.csv,audio15_logmel.csv,0.6666666666666666,0.3333333333333333,ERY,ARUM
+16,Arms,label016_trial0023_pred_Arms.wav,audio16.wav,label016_trial0023_pred_mel.csv,audio16_logmel.csv,1.0,0.0,ED,ARMS
+17,Leg,label017_trial0013_pred_Leg.wav,audio17.wav,label017_trial0013_pred_mel.csv,audio17_logmel.csv,1.0,1.0,AHE,LANK
+20,Hands,label020_trial0019_pred_Hands.wav,audio20.wav,label020_trial0031_pred_mel.csv,audio20_logmel.csv,1.0,0.0,MOR,HANDS
+20,Hands,label020_trial0031_pred_Hands.wav,audio20.wav,label020_trial0031_pred_mel.csv,audio20_logmel.csv,1.0,0.0,O,HANDS
+22,Feet,label022_trial0021_pred_Feet.wav,audio22.wav,label022_trial0021_pred_mel.csv,audio22_logmel.csv,1.0,0.25,PHSE,FEAT
+26,Three,label026_trial0001_pred_Three.wav,audio26.wav,label026_trial0010_pred_mel.csv,audio26_logmel.csv,0.8,0.4,O YE,THIRE
+26,Three,label026_trial0010_pred_Three.wav,audio26.wav,label026_trial0010_pred_mel.csv,audio26_logmel.csv,0.4,0.4,WHERE E,THIRE
+28,Five,label028_trial0002_pred_Five.wav,audio28.wav,label028_trial0002_pred_mel.csv,audio28_logmel.csv,1.0,0.25,MY,FIVES
+29,Six,label029_trial0005_pred_Six.wav,audio29.wav,label029_trial0005_pred_mel.csv,audio29_logmel.csv,2.3333333333333335,0.3333333333333333,FORENCE,SIXS
+30,Seven,label030_trial0016_pred_Seven.wav,audio30.wav,label030_trial0016_pred_mel.csv,audio30_logmel.csv,0.8,0.0,RELY,SEVEN
+36,Before,label036_trial0008_pred_Before.wav,audio36.wav,label036_trial0028_pred_mel.csv,audio36_logmel.csv,0.8333333333333334,0.5,HRD,TEFLOR
+36,Before,label036_trial0028_pred_Before.wav,audio36.wav,label036_trial0028_pred_mel.csv,audio36_logmel.csv,1.0,0.5,H,TEFLOR
+37,Now.,label037_trial0014_pred_Now.wav,audio37.wav,label037_trial0014_pred_mel.csv,audio37_logmel.csv,1.0,0.0,U,NOW
+41,Tomorrow,label041_trial0024_pred_Tomorrow.wav,audio41.wav,label041_trial0024_pred_mel.csv,audio41_logmel.csv,0.875,0.125,OY,TO MOROW
+44,Bath,label044_trial0022_pred_Bath.wav,audio44.wav,label044_trial0022_pred_mel.csv,audio44_logmel.csv,0.75,0.0,AM,BATH
+46,Daughter,label046_trial0030_pred_Daughter.wav,audio46.wav,label046_trial0030_pred_mel.csv,audio46_logmel.csv,0.875,0.625,URY,TANDER
+50,Nurse,label050_trial0011_pred_Nurse.wav,audio50.wav,label050_trial0011_pred_mel.csv,audio50_logmel.csv,0.8,0.0,ROME,NURSE
+58,Why?,label058_trial0004_pred_Why.wav,audio58.wav,label058_trial0004_pred_mel.csv,audio58_logmel.csv,1.0,0.0,RI,WHY
+60,How?,label060_trial0012_pred_How.wav,audio60.wav,label060_trial0012_pred_mel.csv,audio60_logmel.csv,0.6666666666666666,0.6666666666666666,OA,HOWIN
+65,I can t,label065_trial0027_pred_I_can_t.wav,audio65.wav,label065_trial0027_pred_mel.csv,audio65_logmel.csv,1.0,0.0,RY HA,I CAN'T
+68,Help!,label068_trial0007_pred_Help.wav,audio68.wav,label068_trial0007_pred_mel.csv,audio68_logmel.csv,1.0,0.75,,HOW
+70,Hot,label070_trial0018_pred_Hot.wav,audio70.wav,label070_trial0018_pred_mel.csv,audio70_logmel.csv,0.6666666666666666,0.3333333333333333,OH,HUT
+73,Ribbon,label073_trial0020_pred_Ribbon.wav,audio73.wav,label073_trial0020_pred_mel.csv,audio73_logmel.csv,0.8333333333333334,0.3333333333333333,O,RIBEN
+74,Palm,label074_trial0009_pred_Palm.wav,audio74.wav,label074_trial0009_pred_mel.csv,audio74_logmel.csv,1.0,1.0,HONY,HI
+AVG,AVG,,,,,0.933333,0.342424,,

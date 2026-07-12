@@ -20,3 +20,4 @@ torchvision==0.24.1
 speechbrain
 torchmetrics
 wavio
+pesq

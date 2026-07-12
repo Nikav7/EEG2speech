@@ -1,0 +1,35 @@
+class_label,word,generated_wav,reference_wav,generated_mel,reference_mel,cer,cer_gt,predicted_word_generated,predicted_word_groundtruth
+1,Hello!,label001_trial0003_pred_Hello.wav,audio1.wav,label001_trial0003_pred_mel.csv,audio1_logmel.csv,0.8,0.4,O,HALO
+3,No.,label003_trial0016_pred_No.wav,audio3.wav,label003_trial0016_pred_mel.csv,audio3_logmel.csv,0.5,0.5,MO,NOW
+5,Tea,label005_trial0005_pred_Tea.wav,audio5.wav,label005_trial0005_pred_mel.csv,audio5_logmel.csv,1.0,0.6666666666666666,FUR,SA
+7,Food,label007_trial0000_pred_Food.wav,audio7.wav,label007_trial0019_pred_mel.csv,audio7_logmel.csv,1.0,0.5,UY,FOL
+7,Food,label007_trial0019_pred_Food.wav,audio7.wav,label007_trial0019_pred_mel.csv,audio7_logmel.csv,1.0,0.5,LE,FOL
+12,Light,label012_trial0017_pred_Light.wav,audio12.wav,label012_trial0017_pred_mel.csv,audio12_logmel.csv,1.4,0.2,YOU AREI,LIGHTE
+14,Head,label014_trial0021_pred_Head.wav,audio14.wav,label014_trial0022_pred_mel.csv,audio14_logmel.csv,1.0,0.0,,HEAD
+14,Head,label014_trial0022_pred_Head.wav,audio14.wav,label014_trial0022_pred_mel.csv,audio14_logmel.csv,0.75,0.0,HO,HEAD
+16,Arms,label016_trial0025_pred_Arms.wav,audio16.wav,label016_trial0025_pred_mel.csv,audio16_logmel.csv,1.0,0.0,O,ARMS
+21,Foot,label021_trial0023_pred_Foot.wav,audio21.wav,label021_trial0023_pred_mel.csv,audio21_logmel.csv,1.0,0.25,U,FOT
+22,Feet,label022_trial0009_pred_Feet.wav,audio22.wav,label022_trial0009_pred_mel.csv,audio22_logmel.csv,0.5,0.25,FAIT,FEAT
+23,Zero,label023_trial0029_pred_Zero.wav,audio23.wav,label023_trial0031_pred_mel.csv,audio23_logmel.csv,0.75,1.5,HE,IS HERE ROW
+23,Zero,label023_trial0031_pred_Zero.wav,audio23.wav,label023_trial0031_pred_mel.csv,audio23_logmel.csv,1.0,1.5,,IS HERE ROW
+24,One,label024_trial0024_pred_One.wav,audio24.wav,label024_trial0024_pred_mel.csv,audio24_logmel.csv,1.0,0.0,R,ONE
+26,Three,label026_trial0026_pred_Three.wav,audio26.wav,label026_trial0026_pred_mel.csv,audio26_logmel.csv,1.0,0.4,GLOLY,THIRE
+28,Five,label028_trial0032_pred_Five.wav,audio28.wav,label028_trial0032_pred_mel.csv,audio28_logmel.csv,1.25,0.25,MURIN,FIVES
+30,Seven,label030_trial0015_pred_Seven.wav,audio30.wav,label030_trial0015_pred_mel.csv,audio30_logmel.csv,0.8,0.0,PER,SEVEN
+34,Stop!,label034_trial0013_pred_Stop.wav,audio34.wav,label034_trial0013_pred_mel.csv,audio34_logmel.csv,0.75,0.25,FO,STOT
+36,Before,label036_trial0001_pred_Before.wav,audio36.wav,label036_trial0001_pred_mel.csv,audio36_logmel.csv,1.0,0.5,HL,TEFLOR
+37,Now.,label037_trial0012_pred_Now.wav,audio37.wav,label037_trial0012_pred_mel.csv,audio37_logmel.csv,1.0,0.0,H,NOW
+40,Today,label040_trial0006_pred_Today.wav,audio40.wav,label040_trial0007_pred_mel.csv,audio40_logmel.csv,0.6,0.0,FOY,TO DAY
+40,Today,label040_trial0007_pred_Today.wav,audio40.wav,label040_trial0007_pred_mel.csv,audio40_logmel.csv,1.0,0.0,HE,TO DAY
+47,Son,label047_trial0030_pred_Son.wav,audio47.wav,label047_trial0030_pred_mel.csv,audio47_logmel.csv,1.0,0.0,FORE,SON
+53,Jam,label053_trial0010_pred_Jam.wav,audio53.wav,label053_trial0018_pred_mel.csv,audio53_logmel.csv,1.6666666666666667,0.0,UMERI,JAM
+53,Jam,label053_trial0018_pred_Jam.wav,audio53.wav,label053_trial0018_pred_mel.csv,audio53_logmel.csv,1.0,0.0,HO,JAM
+60,How?,label060_trial0008_pred_How.wav,audio60.wav,label060_trial0008_pred_mel.csv,audio60_logmel.csv,1.3333333333333333,0.6666666666666666,IL YE,HOWIN
+62,I need,label062_trial0014_pred_I_need.wav,audio62.wav,label062_trial0014_pred_mel.csv,audio62_logmel.csv,0.8,0.2,UN,I NED
+65,I can t,label065_trial0027_pred_I_can_t.wav,audio65.wav,label065_trial0027_pred_mel.csv,audio65_logmel.csv,1.0,0.0,O,I CAN'T
+66,Sure!,label066_trial0004_pred_Sure.wav,audio66.wav,label066_trial0011_pred_mel.csv,audio66_logmel.csv,1.0,0.0,MAN,SURE
+66,Sure!,label066_trial0011_pred_Sure.wav,audio66.wav,label066_trial0011_pred_mel.csv,audio66_logmel.csv,1.0,0.0,F,SURE
+69,Quit,label069_trial0002_pred_Quit.wav,audio69.wav,label069_trial0028_pred_mel.csv,audio69_logmel.csv,1.0,0.75,OH,WHAIT
+69,Quit,label069_trial0020_pred_Quit.wav,audio69.wav,label069_trial0028_pred_mel.csv,audio69_logmel.csv,1.0,0.75,A,WHAIT
+69,Quit,label069_trial0028_pred_Quit.wav,audio69.wav,label069_trial0028_pred_mel.csv,audio69_logmel.csv,0.75,0.75,IH,WHAIT
+AVG,AVG,,,,,0.959091,0.326768,,

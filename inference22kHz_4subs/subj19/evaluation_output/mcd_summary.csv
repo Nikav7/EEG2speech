@@ -1,0 +1,35 @@
+class_label,word,generated_wav,reference_wav,generated_mel,reference_mel,mcd
+1,Hello!,label001_trial0012_pred_Hello.wav,audio1.wav,label001_trial0028_pred_mel.csv,audio1_logmel.csv,738.5191050916735
+1,Hello!,label001_trial0028_pred_Hello.wav,audio1.wav,label001_trial0028_pred_mel.csv,audio1_logmel.csv,738.5191050916735
+10,Left,label010_trial0003_pred_Left.wav,audio10.wav,label010_trial0029_pred_mel.csv,audio10_logmel.csv,450.03083126011757
+10,Left,label010_trial0029_pred_Left.wav,audio10.wav,label010_trial0029_pred_mel.csv,audio10_logmel.csv,450.03083126011757
+14,Head,label014_trial0006_pred_Head.wav,audio14.wav,label014_trial0006_pred_mel.csv,audio14_logmel.csv,499.4317623085335
+19,Heart,label019_trial0026_pred_Heart.wav,audio19.wav,label019_trial0026_pred_mel.csv,audio19_logmel.csv,749.4097999829434
+21,Foot,label021_trial0024_pred_Foot.wav,audio21.wav,label021_trial0024_pred_mel.csv,audio21_logmel.csv,561.7553663516434
+24,One,label024_trial0023_pred_One.wav,audio24.wav,label024_trial0023_pred_mel.csv,audio24_logmel.csv,440.5771596598743
+25,Two,label025_trial0010_pred_Two.wav,audio25.wav,label025_trial0010_pred_mel.csv,audio25_logmel.csv,596.676788427681
+27,Four,label027_trial0000_pred_Four.wav,audio27.wav,label027_trial0027_pred_mel.csv,audio27_logmel.csv,540.5540210637477
+27,Four,label027_trial0027_pred_Four.wav,audio27.wav,label027_trial0027_pred_mel.csv,audio27_logmel.csv,540.5540210637477
+29,Six,label029_trial0022_pred_Six.wav,audio29.wav,label029_trial0022_pred_mel.csv,audio29_logmel.csv,709.4486905062797
+31,Eight,label031_trial0002_pred_Eight.wav,audio31.wav,label031_trial0002_pred_mel.csv,audio31_logmel.csv,394.4571611979802
+32,Nine,label032_trial0018_pred_Nine.wav,audio32.wav,label032_trial0018_pred_mel.csv,audio32_logmel.csv,416.7469265478296
+34,Stop!,label034_trial0020_pred_Stop.wav,audio34.wav,label034_trial0020_pred_mel.csv,audio34_logmel.csv,609.6666572543832
+35,Go on.,label035_trial0032_pred_Go_on.wav,audio35.wav,label035_trial0032_pred_mel.csv,audio35_logmel.csv,480.3695174736097
+40,Today,label040_trial0011_pred_Today.wav,audio40.wav,label040_trial0011_pred_mel.csv,audio40_logmel.csv,574.9450334362401
+45,Love,label045_trial0005_pred_Love.wav,audio45.wav,label045_trial0005_pred_mel.csv,audio45_logmel.csv,457.60298643008764
+46,Daughter,label046_trial0031_pred_Daughter.wav,audio46.wav,label046_trial0031_pred_mel.csv,audio46_logmel.csv,529.7917868434326
+47,Son,label047_trial0017_pred_Son.wav,audio47.wav,label047_trial0017_pred_mel.csv,audio47_logmel.csv,654.6980037160473
+48,Partner,label048_trial0009_pred_Partner.wav,audio48.wav,label048_trial0009_pred_mel.csv,audio48_logmel.csv,484.1473943838304
+49,Assistant,label049_trial0014_pred_Assistant.wav,audio49.wav,label049_trial0014_pred_mel.csv,audio49_logmel.csv,713.8852058527242
+50,Nurse,label050_trial0019_pred_Nurse.wav,audio50.wav,label050_trial0019_pred_mel.csv,audio50_logmel.csv,720.6968354151561
+51,Music,label051_trial0007_pred_Music.wav,audio51.wav,label051_trial0007_pred_mel.csv,audio51_logmel.csv,521.3841568686843
+54,Yellow,label054_trial0015_pred_Yellow.wav,audio54.wav,label054_trial0015_pred_mel.csv,audio54_logmel.csv,477.5467623846279
+58,Why?,label058_trial0025_pred_Why.wav,audio58.wav,label058_trial0025_pred_mel.csv,audio58_logmel.csv,549.0155269866448
+59,Who?,label059_trial0021_pred_Who.wav,audio59.wav,label059_trial0021_pred_mel.csv,audio59_logmel.csv,563.129766308106
+60,How?,label060_trial0013_pred_How.wav,audio60.wav,label060_trial0013_pred_mel.csv,audio60_logmel.csv,564.1608313477685
+62,I need,label062_trial0008_pred_I_need.wav,audio62.wav,label062_trial0008_pred_mel.csv,audio62_logmel.csv,687.5439758289002
+64,I can,label064_trial0001_pred_I_can.wav,audio64.wav,label064_trial0001_pred_mel.csv,audio64_logmel.csv,676.9306791159212
+68,Help!,label068_trial0016_pred_Help.wav,audio68.wav,label068_trial0016_pred_mel.csv,audio68_logmel.csv,758.2015860110964
+69,Quit,label069_trial0004_pred_Quit.wav,audio69.wav,label069_trial0004_pred_mel.csv,audio69_logmel.csv,455.4693530936254
+72,Egg,label072_trial0030_pred_Egg.wav,audio72.wav,label072_trial0030_pred_mel.csv,audio72_logmel.csv,614.3895832378495
+AVG,AVG,,,,,573.342037

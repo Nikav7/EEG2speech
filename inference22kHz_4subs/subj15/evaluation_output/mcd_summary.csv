@@ -1,0 +1,14 @@
+class_label,word,generated_wav,reference_wav,generated_mel,reference_mel,mcd
+6,Coffee,label006_trial0007_pred_Coffee.wav,audio6.wav,label006_trial0007_pred_mel.csv,audio6_logmel.csv,342.7478810230724
+8,Up,label008_trial0001_pred_Up.wav,audio8.wav,label008_trial0001_pred_mel.csv,audio8_logmel.csv,390.1402265999174
+9,Down,label009_trial0000_pred_Down.wav,audio9.wav,label009_trial0000_pred_mel.csv,audio9_logmel.csv,396.77839946581884
+12,Light,label012_trial0009_pred_Light.wav,audio12.wav,label012_trial0009_pred_mel.csv,audio12_logmel.csv,399.82636662095484
+13,Dark,label013_trial0005_pred_Dark.wav,audio13.wav,label013_trial0005_pred_mel.csv,audio13_logmel.csv,488.08298932184186
+18,Legs,label018_trial0011_pred_Legs.wav,audio18.wav,label018_trial0011_pred_mel.csv,audio18_logmel.csv,333.5074269667018
+20,Hands,label020_trial0002_pred_Hands.wav,audio20.wav,label020_trial0002_pred_mel.csv,audio20_logmel.csv,340.1125983293092
+21,Foot,label021_trial0010_pred_Foot.wav,audio21.wav,label021_trial0010_pred_mel.csv,audio21_logmel.csv,325.311324699814
+23,Zero,label023_trial0004_pred_Zero.wav,audio23.wav,label023_trial0004_pred_mel.csv,audio23_logmel.csv,528.5497905086196
+25,Two,label025_trial0003_pred_Two.wav,audio25.wav,label025_trial0003_pred_mel.csv,audio25_logmel.csv,459.08192428102086
+26,Three,label026_trial0008_pred_Three.wav,audio26.wav,label026_trial0008_pred_mel.csv,audio26_logmel.csv,333.5344643428945
+30,Seven,label030_trial0006_pred_Seven.wav,audio30.wav,label030_trial0006_pred_mel.csv,audio30_logmel.csv,334.02183292919176
+AVG,AVG,,,,,389.307935

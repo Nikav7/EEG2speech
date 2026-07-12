@@ -34,6 +34,7 @@ FMIN = 20.0
 FMAX = SR / 2.0
 N_MFCC = 40
 W2V_MODEL_NAME = "facebook/wav2vec2-base-960h"
+W2V_FT_PATH = os.path.join(os.path.dirname(__file__), "..", "wav2vec2_finetuned")
 RUN_W2V_TSNE = True
 DIST_CLUSTER_THRESHOLD = 0.4  # for macro clusters
 MEL_KMEANS_CLUSTERS = 13
@@ -587,6 +588,7 @@ def plot_mel_kmeans_clusters(
 def compute_wav2vec_embeddings(
     wav_dir: str,
     model_name: str = W2V_MODEL_NAME,
+    finetuned_path: str = W2V_FT_PATH,
     target_sr: int = 16000,
     device: str = None,
 ) -> tuple:
@@ -596,11 +598,12 @@ def compute_wav2vec_embeddings(
         wav_names: sorted WAV file names
         embeddings: np.ndarray [N, D]
     """
-  
+
     transformers_mod = importlib.import_module("transformers")
-    Wav2Vec2Model = getattr(transformers_mod, "Wav2Vec2Model")
-    Wav2Vec2Processor = getattr(transformers_mod, "Wav2Vec2Processor")
-  
+    AutoModel = getattr(transformers_mod, "AutoModel")
+    AutoModelForCTC = getattr(transformers_mod, "AutoModelForCTC")
+    AutoProcessor = getattr(transformers_mod, "AutoProcessor")
+
     wav_names = sorted(
         [f for f in os.listdir(wav_dir) if f.lower().endswith(".wav")],
         key=natural_key,
@@ -611,8 +614,22 @@ def compute_wav2vec_embeddings(
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    processor = Wav2Vec2Processor.from_pretrained(model_name)
-    model = Wav2Vec2Model.from_pretrained(model_name).to(device)
+    # Prefer a local fine-tuned checkpoint when available, otherwise use model_name.
+    pretrained_source = finetuned_path if finetuned_path and os.path.isdir(finetuned_path) else model_name
+    if pretrained_source == finetuned_path:
+        print(f"Loading wav2vec from fine-tuned path: {pretrained_source}")
+    else:
+        print(f"Fine-tuned path not found ({finetuned_path}); loading: {pretrained_source}")
+
+    processor = AutoProcessor.from_pretrained(pretrained_source)
+    try:
+        model = AutoModel.from_pretrained(pretrained_source).to(device)
+    except Exception as exc:
+        # Some fine-tuned checkpoints are saved as CTC heads; use their backbone for embeddings.
+        print(f"AutoModel load failed ({exc}); falling back to AutoModelForCTC backbone.")
+        ctc_model = AutoModelForCTC.from_pretrained(pretrained_source).to(device)
+        model = ctc_model.wav2vec2
+
     model.eval()
 
     embeddings = []
