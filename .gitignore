@@ -20,6 +20,7 @@ inference22kHz_GL32its/
 inference22kHz_GL64its/
 inference22kHz_hifi/
 inference22kHz_4subs_last/
+inference22kHz_4subs_new/
 TrainResult/
 TrainResult16kHz_old/
 TrainResult22kHz_384/

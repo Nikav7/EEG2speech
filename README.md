@@ -55,10 +55,10 @@ Default Arguments and details
     parser.add_argument('--sub', nargs='+', type=int, default=[18])
     parser.add_argument('--task', type=str, default='imagined_speech')
 
-    parser.add_argument('--stt_chunk_size', type=int, default=2)
-    parser.add_argument('--stt_backbone', type=str, default='wav2vec2_base_960h', choices=['wav2vec2_base_960h', 'wav2vec2_large_960h', 'hubert_large'])
+    parser.add_argument('--stt_chunk_size', type=int, default=4)
+    parser.add_argument('--stt_backbone', type=str, default='wav2vecFT', choices=['wav2vecFT','wav2vec2_base_960h', 'wav2vec2_large_960h', 'hubert_large'])
     parser.add_argument('--ctc_device', type=str, default='cpu', choices=['cuda', 'cpu'], help='device for vocoder+STT+CTC branch')
-    parser.add_argument('--cer_every_n_batches', type=int, default=6)
+    parser.add_argument('--cer_every_n_batches', type=int, default=4)
     parser.add_argument('--compute_cer_in_val', type=bool, default=False)
 
 ```

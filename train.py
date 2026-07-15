@@ -975,7 +975,7 @@ def main(args):
         else:
             print("=> no checkpoint found at '{}'".format(loc_d))
 
-    if args.resume:
+    if args.resume: #RESUME FROM BEST ON 13/07/26
         loc_g = os.path.join(args.savemodel, 'checkpoint_g.pt')
         loc_d = os.path.join(args.savemodel, 'checkpoint_d.pt')
 
