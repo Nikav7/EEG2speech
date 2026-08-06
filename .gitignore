@@ -2,6 +2,7 @@ __pycache__/
 .venv/
 .vscode/
 eegdata/
+eegdata_250sr_aug9/
 eegdata_250sr_minaug/
 eegdata_250sr_minaug_allconds/
 eegdata15to18/
@@ -19,13 +20,8 @@ inference22kHz540/
 inference22kHz_GL32its/
 inference22kHz_GL64its/
 inference22kHz_hifi/
-inference22kHz_4subs_last/
 inference22kHz_4subs_new/
-TrainResult/
-TrainResult16kHz_old/
-TrainResult22kHz_384/
-TrainResult22kHz_540/
-TrainResult22kHz_679/
+TrainResult22kHz_FT_3subs1618/
 TrainResult22kHz_4subs1518/subj15-16-17-18/imagined_speech/savemodel/
 TrainResult22kHz_710_wav2vecFTfrom384/subj18/imagined_speech/savemodel/
 TrainResult16kHz/subj18/imagined_speech/savemodel/
@@ -36,5 +32,3 @@ preprocess/olds/
 wav2vec2_finetuned/
 extended_infomaxcomps025-120Hz/
 toignore/
-plots/
-plots_/

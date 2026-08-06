@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-GENERATED_DIR = os.path.join(PROJECT_ROOT, "inference22kHz_4subs")
+GENERATED_DIR = os.path.join(PROJECT_ROOT, "inference22kHz_4subs_last")
 EVENTS_CSV = os.path.join(PROJECT_ROOT, "events_codes.csv")
 AUDIODATA_DIR = os.path.join(PROJECT_ROOT, "audiodata", "twos_22050")
 ORIGINAL_MELS = os.path.join(PROJECT_ROOT, "audiodata", "logmel22")

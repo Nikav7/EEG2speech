@@ -506,13 +506,13 @@ def _augment_split_once(
     return x_im_aug, x_sp_aug, y_aug
 
 
-def _infer_trials_per_class(y_dec: np.ndarray, num_class: int) -> int:
-    """Infer class-balanced split depth from imagined labels."""
-    counts = [int(np.sum(y_dec == cls)) for cls in range(1, num_class + 1)]
-    if min(counts) <= 0:
-        missing = [str(i + 1) for i, c in enumerate(counts) if c <= 0]
-        raise ValueError(f"Missing imagined samples for classes: {', '.join(missing)}")
-    return min(counts)
+# def _infer_trials_per_class(y_dec: np.ndarray, num_class: int) -> int:
+#     """Infer class-balanced split depth from imagined labels."""
+#     counts = [int(np.sum(y_dec == cls)) for cls in range(1, num_class + 1)]
+#     if min(counts) <= 0:
+#         missing = [str(i + 1) for i, c in enumerate(counts) if c <= 0]
+#         raise ValueError(f"Missing imagined samples for classes: {', '.join(missing)}")
+#     return min(counts)
 
 
 def run_vector_embedding_pipeline(
@@ -532,7 +532,7 @@ def run_vector_embedding_pipeline(
     trials_per_class: int | None = None,
     val_ratio: float = 0.2,
     test_ratio: float = 0.1,
-    augment_target_per_class: int = 9, #changed to from 15 to 9 when training on 5 subjects
+    augment_target_per_class: int = 9, #changed to from 15 to 9 when training on more subjects
     augment_noise_std: float = 1e-4,
     use_augmentation: bool = True,
     include_listening_in_csp_train: bool = False,
@@ -556,7 +556,7 @@ def run_vector_embedding_pipeline(
     y_at_dec = to_decoded_labels(y_attempted)
     y_li_dec = to_decoded_labels(y_listening)
 
-    # Keep class cardinality fixed (label_num_class), but normalize sparse/shifted
+    # Keep class cardinality fixed (label_num_class), but normalize shifted
     # label IDs to contiguous 1..label_num_class so split enforcement remains valid.
     im_unique = np.unique(y_im_dec)
     at_unique = np.unique(y_at_dec)
@@ -721,7 +721,7 @@ def run_vector_embedding_pipeline(
 
 def prepare_vector_embedding_inputs(
     epochs_all: Dict[int, Dict[int, mne.Epochs]],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Build imagined/attempted/listening arrays for run_vector_embedding_pipeline.
 
     Matching strategy:
@@ -805,14 +805,40 @@ def prepare_vector_embedding_inputs(
     x_attempted = x_attempted[at_mask]
     y_attempted = y_attempted[at_mask]
 
-    # Normalize to contiguous 1..K labels to keeep the downstream split logic valid
-    # class IDs 1..label_num_class even when raw event codes are sparse. (for subj 15)
+    # class IDs 1..label_num_class
     class_map = {int(cls): idx + 1 for idx, cls in enumerate(np.sort(common_classes))}
     y_imagined = np.asarray([class_map[int(v)] for v in y_imagined], dtype=np.int32)
     y_listening = np.asarray([class_map[int(v)] for v in y_listening], dtype=np.int32)
     y_attempted = np.asarray([class_map[int(v)] for v in y_attempted], dtype=np.int32)
 
-    return x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening
+    return x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening, common_classes.astype(np.int32, copy=True)
+
+
+def save_label_metadata_csv(
+    output_dir: str,
+    subject_id: int,
+    common_classes: np.ndarray,
+) -> None:
+    """Save original-to-remapped label metadata for one subject."""
+    subj_dir = os.path.join(output_dir, f"subj{subject_id}")
+    os.makedirs(subj_dir, exist_ok=True)
+
+    remapped_labels = np.arange(1, common_classes.size + 1, dtype=np.int32)
+    rows = []
+    for condition_name in ("imagined_speech", "attempted_speech", "listening"):
+        for original_label, remapped_label in zip(common_classes.tolist(), remapped_labels.tolist()):
+            rows.append(
+                {
+                    "subject_id": int(subject_id),
+                    "condition": condition_name,
+                    "original_label": int(original_label),
+                    "remapped_label": int(remapped_label),
+                }
+            )
+
+    metadata_path = os.path.join(subj_dir, "label_metadata.csv")
+    pd.DataFrame(rows).to_csv(metadata_path, index=False)
+    print(f"Saved label metadata CSV: {metadata_path}")
 
 
 def summarize_class_counts(epochs_all: Dict[int, Dict[int, mne.Epochs]]) -> None:
@@ -865,6 +891,7 @@ def save_splits_to_csv(
     subject_id: int,
     condition_name: str,
     condition_prefix: str,
+    original_labels: np.ndarray,
     label_prefix: str | None = None,
 ) -> None:
     """Save one CSV per epoch under output_dir/subj#/condition/train|val|test.
@@ -875,6 +902,7 @@ def save_splits_to_csv(
     subj_dir = os.path.join(output_dir, f"subj{subject_id}")
     cond_dir = os.path.join(subj_dir, condition_name)
     label_prefix = condition_prefix if label_prefix is None else label_prefix
+    original_labels = np.asarray(original_labels).astype(np.int32)
     split_map = {
         "train": (f"{condition_prefix}_train", f"y_{label_prefix}_train_dec" if label_prefix != "imagined" and label_prefix != "attempted" else "y_train_dec"),
         "val": (f"{condition_prefix}_val", f"y_{label_prefix}_val_dec" if label_prefix != "imagined" and label_prefix != "attempted" else "y_val_dec"),
@@ -897,7 +925,12 @@ def save_splits_to_csv(
         os.makedirs(split_dir, exist_ok=True)
 
         for i in range(x_split.shape[0]):
-            label = int(y_split[i])
+            remapped_label = int(y_split[i])
+            if remapped_label < 1 or remapped_label > original_labels.size:
+                raise ValueError(
+                    f"Remapped label {remapped_label} is out of range for {condition_name}/{split_name}."
+                )
+            label = int(original_labels[remapped_label - 1])
             epoch_mat = x_split[i]
             csv_name = f"label{label:03d}_epoch{i:04d}.csv"
             csv_path = os.path.join(split_dir, csv_name)
@@ -916,7 +949,7 @@ def parse_args() -> argparse.Namespace:
         "--subjects",
         nargs="+",
         type=int,
-        default=[15, 16, 17, 18, 19],
+        default=[16, 17, 18, 19],
         help="Subject IDs to process, e.g. --subjects 15 16 17 18 19",
     )
     parser.add_argument(
@@ -926,13 +959,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default="eegdata_250sr_minaug_allconds",
+        default="eegdata_250sr_aug9",
         help="Output root directory for per-subject split CSVs.",
     )
     parser.add_argument(
         "--include-listening-in-csp-train",
         type=bool,
-        default=True,
+        default=False,
         help="Include listening train samples when fitting shared CSP filters.",
     )
     return parser.parse_args()
@@ -954,7 +987,7 @@ def main() -> None:
     n_fold = 3
     seed = 0
     trials_per_class = None  # inferred from imagined data; split-wise augmentation reaches 15/class
-    # Debug-friendly local toggle: set False to disable augmentation.
+    # set False to disable augmentation.
     use_augmentation = True
     include_listening_in_csp_train = args.include_listening_in_csp_train
     
@@ -972,19 +1005,20 @@ def main() -> None:
         epochs_all = extract_epochs(raw_all, markers_all)
         summarize_class_counts(epochs_all)
 
-        x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening = prepare_vector_embedding_inputs(epochs_all)
+        x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening, common_classes = prepare_vector_embedding_inputs(epochs_all)
         print(
             "Prepared inputs | "
             f"imagined: {x_imagined.shape}, attempted: {x_attempted.shape}, listening: {x_listening.shape}"
         )
+        save_label_metadata_csv(output_dir, subject_id, common_classes)
 
         subject_label_num_class = label_num_class
-        if subject_id == 15:
-            subject_label_num_class = int(np.unique(y_imagined).size)
-            print(
-                f"Subject 15 override: using label_num_class={subject_label_num_class} "
-                f"instead of {label_num_class}"
-            )
+        # if subject_id == 15:
+        #     subject_label_num_class = int(np.unique(y_imagined).size)
+        #     print(
+        #         f"Subject 15 override: using label_num_class={subject_label_num_class} "
+        #         f"instead of {label_num_class}"
+        #     )
 
         out = run_vector_embedding_pipeline(
             x_imagined=x_imagined,
@@ -1006,9 +1040,9 @@ def main() -> None:
             include_listening_in_csp_train=include_listening_in_csp_train,
         )
 
-        save_splits_to_csv(out, output_dir, subject_id, "imagined_speech", "imagined")
-        save_splits_to_csv(out, output_dir, subject_id, "attempted_speech", "attempted")
-        save_splits_to_csv(out, output_dir, subject_id, "listening", "listening", label_prefix="listening")
+        save_splits_to_csv(out, output_dir, subject_id, "imagined_speech", "imagined", common_classes)
+        save_splits_to_csv(out, output_dir, subject_id, "attempted_speech", "attempted", common_classes)
+        save_splits_to_csv(out, output_dir, subject_id, "listening", "listening", common_classes, label_prefix="listening")
 
         for key, value in out.items():
             if isinstance(value, np.ndarray):

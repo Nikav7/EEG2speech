@@ -334,7 +334,7 @@ def _load_hifigan_vocoder(vocoder_ckpt_path: str, device: torch.device) -> torch
 class GriffinLimVocoder(torch.nn.Module):
 	"""Griffin-Lim vocoder with explicit STFT params."""
 
-	def __init__(self, sample_rate: int, n_mels: int, n_fft: int, win_length: int, hop_length: int, n_iter: int = 32):
+	def __init__(self, sample_rate: int, n_mels: int, n_fft: int, win_length: int, hop_length: int, n_iter: int = 128):
 		super().__init__()
 		n_fft = int(n_fft)
 		win_length = int(win_length)
@@ -498,9 +498,11 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--subjects",
 		type=str,
-		default="",
-		help="Optional comma-separated subject IDs to run (e.g. subj15,subj16 or 15,16)",
+		default="16,17,18,19",
+		help="Optional comma-separated subject IDs to run (e.g. subj16,subj17 or 16,17)",
 	)
+
+	
 	parser.add_argument(
 		"--audio-mel-dir",
 		type=str,
@@ -572,7 +574,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--output-dir",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\inference22kHz_4subs_new",
+		default=r"C:\Users\hssn_\Desktop\EEG2speech\inference22kHz_4subs_last",
 		help="Directory to save outputs as per-subject subfolders (mel_csv + wav)",
 	)
 	return parser.parse_args()

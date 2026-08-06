@@ -95,7 +95,7 @@ class GriffinLimVocoder(nn.Module):
                 )
                 self.griffin = torchaudio.transforms.GriffinLim(
                     n_fft=n_fft,
-                    n_iter=32,
+                    n_iter=64,
                     win_length=win_length,
                     hop_length=hop_length,
                     power=2.0,
