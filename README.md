@@ -74,6 +74,5 @@ Default Arguments and details
 [Paper|GitHub](https://arxiv.org/abs/2301.07173 , https://github.com/youngeun1209/NeuroTalk)
 [^2]: HiFi-GAN: Generative Adversarial Networks for Efficient and High Fidelity Speech Synthesis. *Jungil Kong, Jaehyeon Kim, Jaekyoung Bae*. 2020.  [Paper|GitHub] (https://arxiv.org/abs/2010.05646 , https://github.com/jik876/hifi-gan)  
 [^3]: wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations. *Alexei Baevski, Henry Zhou, Abdelrahman Mohamed, Michael Auli*. 2020.  
-[Paper] (https://arxiv.org/abs/2006.11477)
+[Paper] (https://arxiv.org/abs/2006.11477)  
 
-To add line breaks within a footnote, add 2 spaces to the end of a line.  
