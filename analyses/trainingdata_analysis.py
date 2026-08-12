@@ -20,7 +20,7 @@ def parse_args():
     )
     parser.add_argument(
         "--eeg-source-dir",
-        default=os.path.join("eegdata_250sr_new/raw_post_augmentation_no_csp"),
+        default=os.path.join("eegdata_250sr_aug9"),
         help="Root folder containing task subfolders (imagined_speech, attempted_speech, listening), each with train/val/test.",
     )
     parser.add_argument(
@@ -32,7 +32,7 @@ def parse_args():
     )
     parser.add_argument(
         "--output-dir",
-        default="plots_augmented/raw_post_augmentation_no_cspDIFFCLS",
+        default="plots_augmented/csp_post_augmentation_cls1-13",
         help="Directory where UMAP/t-SNE plots are saved..",
     )
     parser.add_argument(

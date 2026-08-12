@@ -1269,7 +1269,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--csp-class-seed",
         type=int,
-        default=42,
+        default=42, #clsrnd1, clsrnd2 is seed 24
         help="Seed for randomly selecting the 13 CSP reference classes from global common classes.",
     )
     return parser.parse_args()
