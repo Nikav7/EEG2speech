@@ -480,7 +480,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--generator-checkpoint",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\TrainResult22kHz_4subs1518\subj15-16-17-18\imagined_speech\savemodel\BEST_checkpoint_g.pt",
+		default=r"C:\Users\hssn_\Desktop\EEG2speech\TrainResult22kHz_FT_3subs1618\subj16-17-18\imagined_speech\savemodel\BEST_checkpoint_g.pt",
 		help="Path to trained generator checkpoint",
 	)
 	parser.add_argument(
@@ -574,7 +574,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--output-dir",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\inference22kHz_4subs_last",
+		default=r"C:\Users\hssn_\Desktop\EEG2speech\inference22kHz_3subs1618",
 		help="Directory to save outputs as per-subject subfolders (mel_csv + wav)",
 	)
 	return parser.parse_args()

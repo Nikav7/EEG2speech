@@ -16,23 +16,23 @@ plt.style.use("seaborn-v0_8-whitegrid")
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Plot UMAP/t-SNE embeddings for eeg_SPSs task folders by split, colored by class id."
+        description="Plot UMAP/t-SNE embeddings for eeg folders by split, colored by class id."
     )
     parser.add_argument(
-        "--eeg-spss-dir",
-        default=os.path.join("eegdata_250sr_minaug_allconds"),
-        help="Root folder containing task subfolders (e.g., imagined_speech, attempted_speech), each with train/val/test.",
+        "--eeg-source-dir",
+        default=os.path.join("eegdata_250sr_new/raw_post_augmentation_no_csp"),
+        help="Root folder containing task subfolders (imagined_speech, attempted_speech, listening), each with train/val/test.",
     )
     parser.add_argument(
         "--subject-id",
         nargs="+",
         type=int,
-        default=[15, 16, 17, 18, 19],
+        default=[16, 17, 18, 19],
         help="Subject ID for the EEG data.",
     )
     parser.add_argument(
         "--output-dir",
-        default="plotsALLcondsCSPtrain",
+        default="plots_augmented/raw_post_augmentation_no_cspDIFFCLS",
         help="Directory where UMAP/t-SNE plots are saved..",
     )
     parser.add_argument(
@@ -51,7 +51,7 @@ def parse_args():
         "--tasks",
         nargs="+",
         default=["imagined_speech", "attempted_speech", "listening"],
-        help="Task folder names under --eeg-spss-dir to analyze.",
+        help="EEG tasks to analyze.",
     )
     parser.add_argument(
         "--n-classes",
@@ -63,6 +63,11 @@ def parse_args():
         "--events-codes",
         default="events_codes.csv",
         help="Path to events_codes.csv file for class name mapping.",
+    )
+    parser.add_argument(
+        "--feature-label",
+        default="EEG data post-augmentation and CSP transformation.",
+        help="Label describing the feature/data type used in plot titles.",
     )
     return parser.parse_args()
 
@@ -261,7 +266,7 @@ def plot_splits_umap(split_data, out_path: str, task_name: str, class_ids, id_to
         ax.grid(True, alpha=0.25)
         add_discrete_colorbar(fig, ax, cmap, norm, class_ids)
 
-    fig.suptitle(f"UMAP of {task_name} eeg_SPSs Trials by Split (colored by event)")
+    fig.suptitle(f"UMAP of {task_name} eeg Trials by Split (colored by event)")
     fig.tight_layout(rect=[0, 0, 1, 1])
     fig.savefig(out_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -299,7 +304,7 @@ def plot_splits_umap_3d(split_data, out_path: str, task_name: str, class_ids, id
         ax.set_zlabel("UMAP 3")
         add_discrete_colorbar(fig, ax, cmap, norm, class_ids)
 
-    fig.suptitle(f"3D UMAP of {task_name} eeg_SPSs Trials by Split (colored by event)")
+    fig.suptitle(f"3D UMAP of {task_name} eeg Trials by Split (colored by event)")
     fig.tight_layout(rect=[0, 0, 1, 1])
     fig.savefig(out_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -321,6 +326,10 @@ def plot_tsne_splits(
     class_ids=None,
     id_to_name: dict = None,
     condition_names: dict = None,
+    title_fontsize: int = 18,
+    legend_fontsize: int = 15,
+    subplot_title_fontsize: int = 15,
+    axis_label_fontsize: int = 11,
 ):
     fig, axes = plt.subplots(1, 3, figsize=(20, 7))
 
@@ -357,7 +366,7 @@ def plot_tsne_splits(
 
         if n_split < 3:
             ax.text(0.5, 0.5, f"Not enough samples in {split_name}", ha="center", va="center")
-            ax.set_title(f"{SPLIT_LABELS[split_name]} (n={n_split})")
+            ax.set_title(f"{SPLIT_LABELS[split_name]} (n={n_split})", fontsize=subplot_title_fontsize)
             ax.set_xticks([])
             ax.set_yticks([])
             continue
@@ -365,7 +374,7 @@ def plot_tsne_splits(
         z = fit_tsne(x, seed, n_components=2)
         if z is None:
             ax.text(0.5, 0.5, f"t-SNE failed in {split_name}", ha="center", va="center")
-            ax.set_title(f"{SPLIT_LABELS[split_name]} (n={n_split})")
+            ax.set_title(f"{SPLIT_LABELS[split_name]} (n={n_split})", fontsize=subplot_title_fontsize)
             ax.set_xticks([])
             ax.set_yticks([])
             continue
@@ -387,9 +396,9 @@ def plot_tsne_splits(
             alpha=0.8,
             edgecolors="none",
         )
-        ax.set_title(f"{SPLIT_LABELS[split_name]} (n={n_split})")
-        ax.set_xlabel("t-SNE 1")
-        ax.set_ylabel("t-SNE 2")
+        ax.set_title(f"{SPLIT_LABELS[split_name]} (n={n_split})", fontsize=subplot_title_fontsize)
+        ax.set_xlabel("t-SNE 1", fontsize=axis_label_fontsize)
+        ax.set_ylabel("t-SNE 2", fontsize=axis_label_fontsize)
         ax.grid(True, alpha=0.25)
 
     ncol, bottom_pad = _build_legend_layout(len(legend_handles))
@@ -398,10 +407,10 @@ def plot_tsne_splits(
         loc="lower center",
         bbox_to_anchor=(0.5, 0.01),
         ncol=ncol,
-        fontsize=7,
+        fontsize=legend_fontsize,
         frameon=False,
     )
-    fig.suptitle(title)
+    fig.suptitle(title, fontsize=title_fontsize)
     fig.tight_layout(rect=[0, bottom_pad, 1, 1])
     fig.savefig(out_path, dpi=220, bbox_inches="tight")
     plt.close(fig)
@@ -410,8 +419,13 @@ def plot_tsne_splits(
 def main():
     args = parse_args()
 
+    feature_label = args.feature_label
+    tsne_title_fontsize = 20
+    tsne_legend_fontsize = 11
+    tsne_subplot_title_fontsize = 15
+    tsne_axis_label_fontsize = 14
 
-    output_dir = args.output_dir if args.output_dir else args.eeg_spss_dir
+    output_dir = args.output_dir if args.output_dir else args.eeg_source_dir
     os.makedirs(output_dir, exist_ok=True)
 
     id_to_name = load_event_names(args.events_codes)
@@ -419,7 +433,7 @@ def main():
 
     rng = np.random.default_rng(args.seed)
 
-    root_name = os.path.basename(os.path.normpath(args.eeg_spss_dir)).lower()
+    root_name = os.path.basename(os.path.normpath(args.eeg_source_dir)).lower()
     root_is_subject_dir = root_name.startswith("subj")
 
     condition_name_to_idx = {name: idx for idx, name in enumerate(args.tasks)}
@@ -440,19 +454,20 @@ def main():
         if root_is_subject_dir:
             task_dirs = []
             for subj_id in args.subject_id:
-                task_dir = os.path.join(args.eeg_spss_dir, task_name)
+                task_dir = os.path.join(args.eeg_source_dir, task_name)
                 if os.path.isdir(task_dir):
                     task_dirs.append((subj_id, task_dir))
         else:
             task_dirs = []
             for subj_id in args.subject_id:
-                task_dir = os.path.join(args.eeg_spss_dir, f"subj{subj_id}", task_name)
+                task_dir = os.path.join(args.eeg_source_dir, f"subj{subj_id}", task_name)
                 if os.path.isdir(task_dir):
                     task_dirs.append((subj_id, task_dir))
 
         if not task_dirs:
             print(
-                f"Skipping task '{task_name}': no matching folders found under {args.eeg_spss_dir} "
+                f"for subject IDs {args.subject_id}"
+                f"under {args.eeg_source_dir}"
                 f"for subject IDs {args.subject_id}"
             )
             continue
@@ -559,11 +574,15 @@ def main():
         plot_tsne_splits(
             split_data=split_data,
             out_path=tsne_file,
-            title=f"EEG CSP features visualized with t-SNE {task_name} by split - Subject " + ", ".join(str(s) for s in args.subject_id),
+            title=f"{feature_label} visualized with t-SNE {task_name} by split - Subject " + ", ".join(str(s) for s in args.subject_id),
             color_mode="event",
             seed=args.seed,
             class_ids=class_ids,
             id_to_name=id_to_name,
+            title_fontsize=tsne_title_fontsize,
+            legend_fontsize=tsne_legend_fontsize,
+            subplot_title_fontsize=tsne_subplot_title_fontsize,
+            axis_label_fontsize=tsne_axis_label_fontsize,
         )
 
         for split_name in SPLITS:
@@ -622,10 +641,14 @@ def main():
         plot_tsne_splits(
             split_data=cumulative_ready,
             out_path=cumulative_path,
-            title="CSP features with t-SNE by split (colored by condition) - Subject " + ", ".join(str(s) for s in args.subject_id),
+            title=f"{feature_label} with t-SNE by split (colored by condition) - Subject " + ", ".join(str(s) for s in args.subject_id),
             color_mode="condition",
             seed=args.seed,
             condition_names=condition_idx_to_name,
+            title_fontsize=tsne_title_fontsize,
+            legend_fontsize=tsne_legend_fontsize,
+            subplot_title_fontsize=tsne_subplot_title_fontsize,
+            axis_label_fontsize=tsne_axis_label_fontsize,
         )
         print("Saved cumulative t-SNE plot:", cumulative_path)
 
@@ -633,9 +656,13 @@ def main():
         plot_tsne_splits(
             split_data=cumulative_ready,
             out_path=cumulative_subject_path,
-            title="CSP features with t-SNE by split (colored by subject) - Subject " + ", ".join(str(s) for s in args.subject_id),
+            title=f"{feature_label} with t-SNE by split (colored by subject) - Subject " + ", ".join(str(s) for s in args.subject_id),
             color_mode="subject",
             seed=args.seed,
+            title_fontsize=tsne_title_fontsize,
+            legend_fontsize=tsne_legend_fontsize,
+            subplot_title_fontsize=tsne_subplot_title_fontsize,
+            axis_label_fontsize=tsne_axis_label_fontsize,
         )
         print("Saved cumulative subject t-SNE plot:", cumulative_subject_path)
 

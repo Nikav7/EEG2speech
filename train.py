@@ -975,7 +975,7 @@ def main(args):
         else:
             print("=> no checkpoint found at '{}'".format(loc_d))
 
-    if args.resume: #RESUME FROM BEST ON 13/07/26
+    if args.resume: #RESUME FROM BEST ON 13/07/26 and 06/08/26
         loc_g = os.path.join(args.savemodel, 'checkpoint_g.pt')
         loc_d = os.path.join(args.savemodel, 'checkpoint_d.pt')
 
@@ -1141,7 +1141,7 @@ def main(args):
 
 if __name__ == '__main__':
 
-    dataDir = './eegdata_250sr_aug9'
+    dataDir = './eegdata_250sr_aug9_1618'
     audioDir = './audiodata/logmel22'
     audioWavDir = './audiodata/twos_22050'
     logDir = './TrainResult22kHz_FT_3subs1618'

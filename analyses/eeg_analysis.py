@@ -14,8 +14,8 @@ COND3_FILTER_BAND = (0.25, 40.0)
 
 CONDITION_BASE = {1: 100, 2: 200, 3: 400}
 CONDITION_NAMES = {1: 'Imagined speech', 2: 'Listening', 3: 'Attempted speech'}
-# Time windows per condition
-COND_TWIN = {1: (-0.5, 2.5), 2: (-0.5, 2.5), 3: (-0.5, 3.5)}
+# Time windows per condition for cisualization in the time domain (in seconds)
+COND_TWIN= {1: (-0.5, 2.5), 2: (-0.5, 2.5), 3: (-0.5, 3.5)}
 
 
 def load_data(subjects, data_dir='clean_data025-120Hz'):
@@ -150,140 +150,140 @@ def main():
 
     # PLOT EVOKED RESPONSES AND TOPOPLOTS
     # Time points for the topoplots
-    time_points12 = [0.20, 0.25, 0.45, 0.65, 0.85, 1.0, 1.25, 1.65, 2.0]
-    time_points3 = [0.25, 0.45, 0.65, 0.85, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75]
+    # time_points12 = [0.20, 0.25, 0.45, 0.65, 0.85, 1.0, 1.25, 1.65, 2.0]
+    # time_points3 = [0.25, 0.45, 0.65, 0.85, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75]
 
-    # Create evoked responses (averaged across epochs) for each subject
-    evoked_200_all = {}
-    evoked_100_all = {}
-    evoked_300_all = {}
-    evoked_300_allfilt = {}
-    evoked_372_allfilt = {}
+    # # Create evoked responses (averaged across epochs) for each subject
+    # evoked_200_all = {}
+    # evoked_100_all = {}
+    # evoked_300_all = {}
+    # evoked_300_allfilt = {}
+    # evoked_372_allfilt = {}
 
-    for subject in epochs_200_all.keys():
-        add_evoked_if_nonempty(epochs_200_all, evoked_200_all, subject)
+    # for subject in epochs_200_all.keys():
+    #     add_evoked_if_nonempty(epochs_200_all, evoked_200_all, subject)
 
-    for subject in epochs_100_all.keys():
-        add_evoked_if_nonempty(epochs_100_all, evoked_100_all, subject)
+    # for subject in epochs_100_all.keys():
+    #     add_evoked_if_nonempty(epochs_100_all, evoked_100_all, subject)
 
-    for subject in epochs_300_all.keys():
-        add_evoked_if_nonempty(
-            epochs_300_all,
-            evoked_300_all,
-            subject,
-            skip_message='Skipping attempted evoked average for subject {subject}: no valid attempted epochs',
-        )
+    # for subject in epochs_300_all.keys():
+    #     add_evoked_if_nonempty(
+    #         epochs_300_all,
+    #         evoked_300_all,
+    #         subject,
+    #         skip_message='Skipping attempted evoked average for subject {subject}: no valid attempted epochs',
+    #     )
 
-    for subject in epochs_300_allfilt.keys():
-        add_evoked_if_nonempty(
-            epochs_300_allfilt,
-            evoked_300_allfilt,
-            subject,
-            skip_message='Skipping attempted evoked average for subject {subject}: no valid attempted epochs',
-        )
+    # for subject in epochs_300_allfilt.keys():
+    #     add_evoked_if_nonempty(
+    #         epochs_300_allfilt,
+    #         evoked_300_allfilt,
+    #         subject,
+    #         skip_message='Skipping attempted evoked average for subject {subject}: no valid attempted epochs',
+    #     )
 
-    for subject in epochs_300_allfilt.keys():
-        stim72_epochs = epochs_300_allfilt[subject]['e472'] if 'e472' in epochs_300_allfilt[subject].event_id else None
-        if stim72_epochs is not None and len(stim72_epochs) > 0:
-            evoked_372_allfilt[subject] = stim72_epochs.average()
+    # for subject in epochs_300_allfilt.keys():
+    #     stim72_epochs = epochs_300_allfilt[subject]['e472'] if 'e472' in epochs_300_allfilt[subject].event_id else None
+    #     if stim72_epochs is not None and len(stim72_epochs) > 0:
+    #         evoked_372_allfilt[subject] = stim72_epochs.average()
     
 
-    print('\n' + '=' * 60)
-    print('EVOKED AVERAGING SUMMARY')
-    print('=' * 60)
-    print_evoked_summary('LISTENING', epochs_200_all, evoked_200_all)
-    print_evoked_summary('IMAGINED SPEECH', epochs_100_all, evoked_100_all)
-    print_evoked_summary('ATTEMPTED SPEECH', epochs_300_all, evoked_300_all)
-    print_evoked_summary('ATTEMPTED SPEECH FILTERED', epochs_300_allfilt, evoked_300_allfilt)
-    print_evoked_summary('ATTEMPTED SPEECH FILTERED (stim 72)', epochs_300_allfilt, evoked_372_allfilt)
-    print('=' * 60 + '\n')
+    # print('\n' + '=' * 60)
+    # print('EVOKED AVERAGING SUMMARY')
+    # print('=' * 60)
+    # print_evoked_summary('LISTENING', epochs_200_all, evoked_200_all)
+    # print_evoked_summary('IMAGINED SPEECH', epochs_100_all, evoked_100_all)
+    # print_evoked_summary('ATTEMPTED SPEECH', epochs_300_all, evoked_300_all)
+    # print_evoked_summary('ATTEMPTED SPEECH FILTERED', epochs_300_allfilt, evoked_300_allfilt)
+    # print_evoked_summary('ATTEMPTED SPEECH FILTERED (stim 72)', epochs_300_allfilt, evoked_372_allfilt)
+    # print('=' * 60 + '\n')
 
-    # Grand average across all subjects for each condition
-    if len(evoked_200_all) > 0:
-        total_segments_200 = sum(len(epochs_200_all[subject]) for subject in epochs_200_all.keys())
-        print(
-            f'Grand Average LISTENING uses {total_segments_200} total segments across {len(evoked_200_all)} subjects'
-        )
-        grand_avg_200 = mne.grand_average(list(evoked_200_all.values()), interpolate_bads=False, drop_bads=True)
-        grand_avg_200.plot_joint(
-            times=time_points12,
-            title=f'Grand Average - LISTENING - N={len(evoked_200_all)} subjects',
-            show=False,
-        )
-        plt.savefig('grand_average_listening.png', dpi=600)
+    # # Grand average across all subjects for each condition
+    # if len(evoked_200_all) > 0:
+    #     total_segments_200 = sum(len(epochs_200_all[subject]) for subject in epochs_200_all.keys())
+    #     print(
+    #         f'Grand Average LISTENING uses {total_segments_200} total segments across {len(evoked_200_all)} subjects'
+    #     )
+    #     grand_avg_200 = mne.grand_average(list(evoked_200_all.values()), interpolate_bads=False, drop_bads=True)
+    #     grand_avg_200.plot_joint(
+    #         times=time_points12,
+    #         title=f'Grand Average - LISTENING - N={len(evoked_200_all)} subjects',
+    #         show=False,
+    #     )
+    #     plt.savefig('grand_average_listening.png', dpi=600)
 
-    if len(evoked_100_all) > 0:
-        total_segments_100 = sum(len(epochs_100_all[subject]) for subject in epochs_100_all.keys())
-        print(
-            f'Grand Average IMAGINED SPEECH uses {total_segments_100} total segments across {len(evoked_100_all)} subjects'
-        )
-        grand_avg_100 = mne.grand_average(list(evoked_100_all.values()), interpolate_bads=False, drop_bads=True)
-        grand_avg_100.plot_joint(
-            times=time_points12,
-            title=f'Grand Average - IMAGINED SPEECH - N={len(evoked_100_all)} subjects',
-            show=False,
-        )
-        plt.savefig('grand_average_imagined_speech.png', dpi=600)
+    # if len(evoked_100_all) > 0:
+    #     total_segments_100 = sum(len(epochs_100_all[subject]) for subject in epochs_100_all.keys())
+    #     print(
+    #         f'Grand Average IMAGINED SPEECH uses {total_segments_100} total segments across {len(evoked_100_all)} subjects'
+    #     )
+    #     grand_avg_100 = mne.grand_average(list(evoked_100_all.values()), interpolate_bads=False, drop_bads=True)
+    #     grand_avg_100.plot_joint(
+    #         times=time_points12,
+    #         title=f'Grand Average - IMAGINED SPEECH - N={len(evoked_100_all)} subjects',
+    #         show=False,
+    #     )
+    #     plt.savefig('grand_average_imagined_speech.png', dpi=600)
 
-    if len(evoked_300_all) > 0:
-        total_segments_300 = sum(len(epochs_300_all[subject]) for subject in epochs_300_all.keys())
-        print(
-            f'Grand Average ATTEMPTED SPEECH uses {total_segments_300} total segments across {len(evoked_300_all)} subjects'
-        )
-        grand_avg_300 = mne.grand_average(list(evoked_300_all.values()), interpolate_bads=False, drop_bads=True)
-        grand_avg_300.plot_joint(
-            times=time_points3,
-            title=f'Grand Average - ATTEMPTED SPEECH - N={len(evoked_300_all)} subjects',
-            show=False,
-        )
-        plt.savefig('grand_average_attempted_speech.png', dpi=600)
+    # if len(evoked_300_all) > 0:
+    #     total_segments_300 = sum(len(epochs_300_all[subject]) for subject in epochs_300_all.keys())
+    #     print(
+    #         f'Grand Average ATTEMPTED SPEECH uses {total_segments_300} total segments across {len(evoked_300_all)} subjects'
+    #     )
+    #     grand_avg_300 = mne.grand_average(list(evoked_300_all.values()), interpolate_bads=False, drop_bads=True)
+    #     grand_avg_300.plot_joint(
+    #         times=time_points3,
+    #         title=f'Grand Average - ATTEMPTED SPEECH - N={len(evoked_300_all)} subjects',
+    #         show=False,
+    #     )
+    #     plt.savefig('grand_average_attempted_speech.png', dpi=600)
 
-    if len(evoked_300_allfilt) > 0:
-        total_segments_300f = sum(len(epochs_300_allfilt[subject]) for subject in epochs_300_allfilt.keys())
-        print(
-            f'Grand Average ATTEMPTED SPEECH FILTERED uses {total_segments_300f} total segments across {len(evoked_300_allfilt)} subjects'
-        )
+    # if len(evoked_300_allfilt) > 0:
+    #     total_segments_300f = sum(len(epochs_300_allfilt[subject]) for subject in epochs_300_allfilt.keys())
+    #     print(
+    #         f'Grand Average ATTEMPTED SPEECH FILTERED uses {total_segments_300f} total segments across {len(evoked_300_allfilt)} subjects'
+    #     )
 
-        grand_avg_300_filt = mne.grand_average(
-            list(evoked_300_allfilt.values()),
-            interpolate_bads=False,
-            drop_bads=True,
-        )
-        grand_avg_300_filt.plot_joint(
-            times=time_points3,
-            title=f'Grand Average - ATTEMPTED SPEECH FILTERED - N={len(evoked_300_allfilt)} subjects',
-            show=False,
-        )
+    #     grand_avg_300_filt = mne.grand_average(
+    #         list(evoked_300_allfilt.values()),
+    #         interpolate_bads=False,
+    #         drop_bads=True,
+    #     )
+    #     grand_avg_300_filt.plot_joint(
+    #         times=time_points3,
+    #         title=f'Grand Average - ATTEMPTED SPEECH FILTERED - N={len(evoked_300_allfilt)} subjects',
+    #         show=False,
+    #     )
 
-        total_segments_300f = sum(len(epochs_300_allfilt[subject]) for subject in epochs_300_allfilt.keys())
-        print(
-            f'Grand Average ATTEMPTED SPEECH FILTERED uses {total_segments_300f} total segments across {len(evoked_300_allfilt)} subjects'
-        )
+    #     total_segments_300f = sum(len(epochs_300_allfilt[subject]) for subject in epochs_300_allfilt.keys())
+    #     print(
+    #         f'Grand Average ATTEMPTED SPEECH FILTERED uses {total_segments_300f} total segments across {len(evoked_300_allfilt)} subjects'
+    #     )
 
-        grand_avg_372 = mne.grand_average(
-            list(evoked_300_allfilt.values()),
-            interpolate_bads=False,
-            drop_bads=True,
-        )
-        grand_avg_372.plot_joint(
-            times=time_points3,
-            title=f'Grand Average - ATTEMPTED SPEECH FILTERED - N={len(evoked_300_allfilt)} subjects',
-            show=False,
-        )
-        plt.savefig('grand_average_attempted_speech_0p25_40Hz.png', dpi=600)
+    #     grand_avg_372 = mne.grand_average(
+    #         list(evoked_300_allfilt.values()),
+    #         interpolate_bads=False,
+    #         drop_bads=True,
+    #     )
+    #     grand_avg_372.plot_joint(
+    #         times=time_points3,
+    #         title=f'Grand Average - ATTEMPTED SPEECH FILTERED - N={len(evoked_300_allfilt)} subjects',
+    #         show=False,
+    #     )
+    #     plt.savefig('grand_average_attempted_speech_0p25_40Hz.png', dpi=600)
 
-    if len(evoked_372_allfilt) > 0:
-        total_segments_372 = sum(len(epochs_300_allfilt[subject]['e472']) for subject in evoked_372_allfilt.keys())
-        print(
-            f'Grand Average ATTEMPTED SPEECH FILTERED (stim 72) uses {total_segments_372} total segments across {len(evoked_372_allfilt)} subjects'
-        )
-        grand_avg_372 = mne.grand_average(list(evoked_372_allfilt.values()), interpolate_bads=False, drop_bads=True)
-        grand_avg_372.plot_joint(
-            times=time_points3,
-            title=f'Grand Average - ATTEMPTED SPEECH FILTERED (stim 72) - N={len(evoked_372_allfilt)} subjects',
-            show=False,
-        )
-        plt.savefig('grand_average_attempted_speech_stim72_0p25_40Hz.png', dpi=600)
+    # if len(evoked_372_allfilt) > 0:
+    #     total_segments_372 = sum(len(epochs_300_allfilt[subject]['e472']) for subject in evoked_372_allfilt.keys())
+    #     print(
+    #         f'Grand Average ATTEMPTED SPEECH FILTERED (stim 72) uses {total_segments_372} total segments across {len(evoked_372_allfilt)} subjects'
+    #     )
+    #     grand_avg_372 = mne.grand_average(list(evoked_372_allfilt.values()), interpolate_bads=False, drop_bads=True)
+    #     grand_avg_372.plot_joint(
+    #         times=time_points3,
+    #         title=f'Grand Average - ATTEMPTED SPEECH FILTERED (stim 72) - N={len(evoked_372_allfilt)} subjects',
+    #         show=False,
+    #     )
+    #     plt.savefig('grand_average_attempted_speech_stim72_0p25_40Hz.png', dpi=600)
 
 
 if __name__ == '__main__':

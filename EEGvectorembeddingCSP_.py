@@ -581,12 +581,12 @@ def run_vector_embedding_pipeline(
         )
 
     target = np.arange(1, label_num_class + 1, dtype=np.int32)
-    # if not np.array_equal(im_unique, target):
-    #     label_map = {int(old): int(new) for old, new in zip(im_unique.tolist(), target.tolist())}
-    #     y_im_dec = np.asarray([label_map[int(v)] for v in y_im_dec], dtype=np.int32)
-    #     y_at_dec = np.asarray([label_map[int(v)] for v in y_at_dec], dtype=np.int32)
-    #     y_li_dec = np.asarray([label_map[int(v)] for v in y_li_dec], dtype=np.int32)
-    #     #remapped class IDs to 1..label_num_class for split stability
+    if not np.array_equal(im_unique, target):
+        label_map = {int(old): int(new) for old, new in zip(im_unique.tolist(), target.tolist())}
+        y_im_dec = np.asarray([label_map[int(v)] for v in y_im_dec], dtype=np.int32)
+        y_at_dec = np.asarray([label_map[int(v)] for v in y_at_dec], dtype=np.int32)
+        y_li_dec = np.asarray([label_map[int(v)] for v in y_li_dec], dtype=np.int32)
+        #remapped class IDs to 1..label_num_class for split stability
 
     if use_augmentation:
         split = make_split_indices(
@@ -1242,7 +1242,7 @@ def parse_args() -> argparse.Namespace:
         "--subjects",
         nargs="+",
         type=int,
-        default=[16, 17, 18, 19],
+        default=[15, 16, 17, 18, 19],
         help="Subject IDs to process, e.g. --subjects 16 17 18 19",
     )
     parser.add_argument(
@@ -1252,7 +1252,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default="eegdata_250sr_new",
+        default="eegdata_250sr_aug_new",
         help="Output root directory for per-subject split CSVs.",
     )
     parser.add_argument(
@@ -1343,7 +1343,7 @@ def main() -> None:
     # Per-subject remapped IDs accumulated during main loop.
     csp_subject_rows: list = []
 
-    # Build consistent cross-subject label map
+    # Build consistent cross-subject label map: global common → 1..31, per-subject extras → 32..N.
     global_class_map = {int(c): i + 1 for i, c in enumerate(np.sort(global_common))}
 
     # Accumulators for cross-subject summary CSVs (post-augmentation counts).
@@ -1354,15 +1354,15 @@ def main() -> None:
     # Create output directories for three stages
     os.makedirs(output_dir, exist_ok=True)
     
-    # save 1, raw pre-augmentation (no augmentation, no CSP)
+    # save 1: Raw pre-augmentation (no augmentation, no CSP)
     raw_pre_aug_dir = os.path.join(non_augmented_output_dir, "raw_pre_augmentation")
     os.makedirs(raw_pre_aug_dir, exist_ok=True)
     
-    # save 2, raw post-augmentation (with augmentation, but no CSP)
+    # save 2: Raw post-augmentation (with augmentation, but no CSP)
     raw_post_aug_dir = os.path.join(output_dir, "raw_post_augmentation_no_csp")
     os.makedirs(raw_post_aug_dir, exist_ok=True)
     
-    # save 3, CSP-transformed post-augmentation
+    # save 3: CSP-transformed post-augmentation (with augmentation and CSP)
     csp_post_aug_dir = os.path.join(output_dir, "csp_post_augmentation")
     os.makedirs(csp_post_aug_dir, exist_ok=True)
     
