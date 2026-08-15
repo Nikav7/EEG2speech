@@ -1,0 +1,9 @@
+metric,mean,std,min,min_sample,max,max_sample
+mcd,406.506074,65.778248,297.425121,label021_trial0023_pred_Foot.wav,558.337656,label066_trial0004_pred_Sure.wav
+pesq,N/A,N/A,N/A,N/A,N/A,N/A
+cer_wav2vec_base,1.057576,0.392224,0.500000,label022_trial0009_pred_Feet.wav,2.666667,label060_trial0008_pred_How.wav
+cer_gt_wav2vec_base,0.326768,0.397063,N/A,N/A,N/A,N/A
+cer_wav2vec_finetuned,0.912121,0.165921,0.250000,label016_trial0025_pred_Arms.wav,1.000000,label001_trial0003_pred_Hello.wav
+cer_gt_wav2vec_finetuned,0.327273,0.366433,N/A,N/A,N/A,N/A
+cer_hubert,0.930808,0.319673,0.250000,label007_trial0000_pred_Food.wav,2.000000,label003_trial0016_pred_No.wav
+cer_gt_hubert,0.209596,0.251495,N/A,N/A,N/A,N/A

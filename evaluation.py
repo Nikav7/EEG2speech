@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-GENERATED_DIR = os.path.join(PROJECT_ROOT, "inference22kHz_4subs_last")
+GENERATED_DIR = os.path.join(PROJECT_ROOT, "inference22kHz_3subs1618_bestep517_64glits")
 EVENTS_CSV = os.path.join(PROJECT_ROOT, "events_codes.csv")
 AUDIODATA_DIR = os.path.join(PROJECT_ROOT, "audiodata", "twos_22050")
 ORIGINAL_MELS = os.path.join(PROJECT_ROOT, "audiodata", "logmel22")
@@ -321,6 +321,92 @@ def _write_metric_summary_csv(rows: List[dict], metric_key: str, out_csv_path: s
         writer.writerow(avg_row)
 
     print(f"Saved {metric_key.upper()} summary: {out_csv_path}")
+
+
+def _format_mean_plus_std(rows: List[dict], metric_key: str) -> str:
+    """Format a metric's per-sample mean and population standard deviation."""
+    if not rows:
+        return "N/A"
+    values = np.asarray([float(row[metric_key]) for row in rows], dtype=np.float64)
+    return f"{values.mean():.6f} +/- {values.std():.6f}"
+
+
+def _write_cumulative_subject_summary(rows: List[dict], out_csv_path: str) -> None:
+    """Write metrics as rows and subjects as columns using mean +/- standard deviation."""
+    metric_keys = [
+        "mcd",
+        "pesq",
+        "cer_wav2vec_base",
+        "cer_gt_wav2vec_base",
+        "cer_wav2vec_finetuned",
+        "cer_gt_wav2vec_finetuned",
+        "cer_hubert",
+        "cer_gt_hubert",
+    ]
+    fieldnames = ["metric"] + [row["subject_id"] for row in rows]
+    with open(out_csv_path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for metric_key in metric_keys:
+            writer.writerow(
+                {
+                    "metric": metric_key,
+                    **{row["subject_id"]: row[metric_key] for row in rows},
+                }
+            )
+    print(f"Saved cumulative subject summary: {out_csv_path}")
+
+
+def _write_subject_metric_statistics(
+    metric_rows: List[tuple],
+    out_csv_path: str,
+) -> None:
+    """Write aggregate statistics for all metrics evaluated for one subject."""
+    fieldnames = ["metric", "mean", "std", "min", "min_sample", "max", "max_sample"]
+    report_rows = []
+    for metric_name, rows, metric_key, include_extrema in metric_rows:
+        if not rows:
+            report_rows.append(
+                {
+                    "metric": metric_name,
+                    "mean": "N/A",
+                    "std": "N/A",
+                    "min": "N/A",
+                    "min_sample": "N/A",
+                    "max": "N/A",
+                    "max_sample": "N/A",
+                }
+            )
+            continue
+
+        values = np.asarray([float(row[metric_key]) for row in rows], dtype=np.float64)
+        report_row = {
+            "metric": metric_name,
+            "mean": f"{values.mean():.6f}",
+            "std": f"{values.std():.6f}",
+            "min": "N/A",
+            "min_sample": "N/A",
+            "max": "N/A",
+            "max_sample": "N/A",
+        }
+        if include_extrema:
+            min_index = int(np.argmin(values))
+            max_index = int(np.argmax(values))
+            report_row.update(
+                {
+                    "min": f"{values[min_index]:.6f}",
+                    "min_sample": rows[min_index]["generated_wav"],
+                    "max": f"{values[max_index]:.6f}",
+                    "max_sample": rows[max_index]["generated_wav"],
+                }
+            )
+        report_rows.append(report_row)
+
+    with open(out_csv_path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(report_rows)
+    print(f"Saved subject metric statistics: {out_csv_path}")
 
 
 def compute_mcd_paired_rows(
@@ -1066,6 +1152,7 @@ def save_cluster_report(
 if __name__ == "__main__":
     word_labels = load_word_labels(EVENTS_CSV)
     subject_runs = _resolve_generated_subject_dirs(GENERATED_DIR)
+    cumulative_subject_rows: List[dict] = []
 
     print(
         "Found generated outputs for subjects: "
@@ -1104,6 +1191,7 @@ if __name__ == "__main__":
         )
 
         pesq_summary_path = os.path.join(output_dir, "pesq_summary.csv")
+        pesq_rows = []
         try:
             pesq_rows = compute_pesq_paired_rows(
                 paired_rows=paired_rows,
@@ -1163,6 +1251,7 @@ if __name__ == "__main__":
 
         # 2) CER with wav2vec fine-tuned checkpoint
         cer_w2v_ft_summary_path = os.path.join(output_dir, "cer_wav2vec_finetuned_summary.csv")
+        cer_w2v_ft_rows = []
         try:
             if not os.path.isdir(W2V_FT_PATH):
                 raise FileNotFoundError(f"Fine-tuned wav2vec checkpoint folder not found: {W2V_FT_PATH}")
@@ -1220,3 +1309,36 @@ if __name__ == "__main__":
             "cer",
             os.path.join(output_dir, "cer_hubert_summary.csv"),
         )
+
+        _write_subject_metric_statistics(
+            [
+                ("mcd", mcd_rows, "mcd", True),
+                ("pesq", pesq_rows, "pesq", True),
+                ("cer_wav2vec_base", cer_w2v_base_rows, "cer", True),
+                ("cer_gt_wav2vec_base", cer_w2v_base_rows, "cer_gt", False),
+                ("cer_wav2vec_finetuned", cer_w2v_ft_rows, "cer", True),
+                ("cer_gt_wav2vec_finetuned", cer_w2v_ft_rows, "cer_gt", False),
+                ("cer_hubert", cer_hubert_rows, "cer", True),
+                ("cer_gt_hubert", cer_hubert_rows, "cer_gt", False),
+            ],
+            os.path.join(output_dir, "cumulative_metric_statistics.csv"),
+        )
+
+        cumulative_subject_rows.append(
+            {
+                "subject_id": subject_id,
+                "mcd": _format_mean_plus_std(mcd_rows, "mcd"),
+                "pesq": _format_mean_plus_std(pesq_rows, "pesq"),
+                "cer_wav2vec_base": _format_mean_plus_std(cer_w2v_base_rows, "cer"),
+                "cer_gt_wav2vec_base": _format_mean_plus_std(cer_w2v_base_rows, "cer_gt"),
+                "cer_wav2vec_finetuned": _format_mean_plus_std(cer_w2v_ft_rows, "cer"),
+                "cer_gt_wav2vec_finetuned": _format_mean_plus_std(cer_w2v_ft_rows, "cer_gt"),
+                "cer_hubert": _format_mean_plus_std(cer_hubert_rows, "cer"),
+                "cer_gt_hubert": _format_mean_plus_std(cer_hubert_rows, "cer_gt"),
+            }
+        )
+
+    _write_cumulative_subject_summary(
+        cumulative_subject_rows,
+        os.path.join(GENERATED_DIR, "cumulative_subject_metric_summary.csv"),
+    )

@@ -2,7 +2,7 @@ import os
 import importlib
 import glob
 
-# TensorBoard loads TensorFlow internally; keep startup logs quiet and deterministic.
+# TensorBoard loads TensorFlow internally. keep startup logs quiet and deterministic
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 
@@ -1141,7 +1141,7 @@ def main(args):
 
 if __name__ == '__main__':
 
-    dataDir = './eegdata_250sr_aug9_1618'
+    dataDir = './eegdata_250sr_aug9_1618_rnd1/csp_post_augmentation'
     audioDir = './audiodata/logmel22'
     audioWavDir = './audiodata/twos_22050'
     logDir = './TrainResult22kHz_FT_3subs1618'

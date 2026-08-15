@@ -334,7 +334,7 @@ def _load_hifigan_vocoder(vocoder_ckpt_path: str, device: torch.device) -> torch
 class GriffinLimVocoder(torch.nn.Module):
 	"""Griffin-Lim vocoder with explicit STFT params."""
 
-	def __init__(self, sample_rate: int, n_mels: int, n_fft: int, win_length: int, hop_length: int, n_iter: int = 128):
+	def __init__(self, sample_rate: int, n_mels: int, n_fft: int, win_length: int, hop_length: int, n_iter: int):
 		super().__init__()
 		n_fft = int(n_fft)
 		win_length = int(win_length)
@@ -446,13 +446,14 @@ def run_inference(args: argparse.Namespace) -> None:
 				if torch.isfinite(peak) and peak.item() > 1e-6:
 					wav_1d = (wav_1d / peak) * float(args.peak_level)
 
-			# Force fixed target duration (default 2.0s).
-			target_samples = int(round(float(args.target_duration_s) * int(args.sample_rate)))
-			if wav_1d.numel() < target_samples:
-				wav_1d = F.pad(wav_1d, (0, target_samples - wav_1d.numel()))
-			elif wav_1d.numel() > target_samples:
-				wav_1d = wav_1d[:target_samples]
+			
+			#target_samples = int(round(float(args.target_duration_s) * int(args.sample_rate)))
+			# if wav_1d.numel() < target_samples:
+			# 	wav_1d = F.pad(wav_1d, (0, target_samples - wav_1d.numel()))
+			# elif wav_1d.numel() > target_samples:
+			# 	wav_1d = wav_1d[:target_samples]
 
+			#wav_1d = wav_1d[:target_samples]
 			wav_1d = wav_1d.detach().cpu()
 
 			stem = os.path.splitext(sample.file_name)[0].replace("epoch", "trial")
@@ -480,7 +481,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--generator-checkpoint",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\TrainResult22kHz_FT_3subs1618\subj16-17-18\imagined_speech\savemodel\BEST_checkpoint_g.pt",
+		default=r"C:\Users\hssn_\Desktop\EEG2speech\TrainResult22KHz_710_wav2vecFTfrom384\subj18\imagined_speech\savemodel\BEST_checkpoint_g_epoch537.pt",
 		help="Path to trained generator checkpoint",
 	)
 	parser.add_argument(
@@ -543,15 +544,15 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--griffinlim-n-iter",
 		type=int,
-		default=128,
+		default=64,
 		help="Number of Griffin-Lim iterations",
 	)
-	parser.add_argument(
-		"--target-duration-s",
-		type=float,
-		default=2.0,
-		help="output waveform duration in seconds",
-	)
+	# parser.add_argument(
+	# 	"--target-duration-s",
+	# 	type=float,
+	# 	default=2.0,
+	# 	help="output waveform duration in seconds",
+	# )
 	parser.add_argument(
 		"--normalize-audio",
 		type=int,
@@ -574,7 +575,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--output-dir",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\inference22kHz_3subs1618",
+		default=r"C:\Users\hssn_\Desktop\EEG2speech\inference22kHz_sub18_beste537",
 		help="Directory to save outputs as per-subject subfolders (mel_csv + wav)",
 	)
 	return parser.parse_args()

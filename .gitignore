@@ -17,6 +17,7 @@ best_models/
 clean_data01-120Hz/
 clean_data025-120Hz1000sr/
 inprogress/
+other_inferences/
 inference16kHz/
 inference16kHz_old/
 inference22kHz540/
@@ -26,10 +27,11 @@ inference22kHz_hifi/
 inference22kHz_3subs1618/
 inference22kHz_4subs_new/
 inference22kHz_4subs_last/subj15/
-TrainResult22kHz_FT_3subs1618/
+TrainResult22kHz_FT_3subs1618/subj16-17-18/imagined_speech/savemodel/
 TrainResult22kHz_4subs1518/subj15-16-17-18/imagined_speech/savemodel/
 TrainResult22kHz_710_wav2vecFTfrom384/subj18/imagined_speech/savemodel/
 TrainResult16kHz/subj18/imagined_speech/savemodel/
+TrainResult22kHz_FT_3subs1618/subj16-17-18/imagined_speech/logs/
 TrainResult22kHz_4subs1518/subj15-16-17-18/imagined_speech/logs/
 TrainResult22kHz_710_wav2vecFTfrom384/subj18/imagined_speech/logs/
 TrainResult16kHz/subj18/imagined_speech/logs/
