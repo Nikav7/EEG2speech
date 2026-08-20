@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
-vlines_x = [70, 200, 300, 396, 400]
-vlines_colors = ['black', 'red', 'red', 'red', 'black']
+vlines_x = [70, 196, 200, 300, 358, 400]
+vlines_colors = ['red', 'black', 'red', 'red', 'red', 'black']
 
 def add_vlines():
     for x, c in zip(vlines_x, vlines_colors):
@@ -125,7 +125,6 @@ plt.plot(epochs, val_acc_d_fake, label='Validation Fake', color='red')
 plt.xlabel('Epochs')
 plt.ylabel('Accuracies Discriminator')
 plt.title('Accuracies over Epochs (Discriminator 22kHz)')
-add_vlines()
 plt.legend()
 plt.savefig(f'{output_prefix}_accuracy_Discriminator.png')
 
@@ -137,6 +136,5 @@ plt.plot(epochs, val_cer_recon, label='CER gen val', color='red')
 plt.xlabel('Epochs')
 plt.ylabel('CER score [0,1]')
 plt.title(' CER scores on ground truth and generated waveforms over Epochs (Generator 22kHz)')
-add_vlines()
 plt.legend()
 plt.savefig(f'{output_prefix}_cer_Generator.png')

@@ -435,7 +435,8 @@ def _match_attempted_to_labels(
 def _augment_split_to_target(
     x_im: np.ndarray,
     x_sp: np.ndarray,
-    y_dec: np.ndarray,
+    y_dec_im: np.ndarray,
+    y_dec_at: np.ndarray,
     *,
     num_class: int,
     target_per_class: int,
@@ -444,43 +445,52 @@ def _augment_split_to_target(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Augment a split so each class has at least target_per_class samples."""
     x_im_aug = [x_im]
-    x_sp_aug = [x_sp]
-    y_aug = [y_dec]
+    x_at_aug = [x_sp]
+    y_aug_im = [y_dec_im]
+    y_aug_at = [y_dec_at]
 
     for cls in range(1, num_class + 1):
-        cls_idx = np.flatnonzero(y_dec == cls)
-        n_have = cls_idx.size
+        cls_idx_im = np.flatnonzero(y_dec_im == cls)
+        n_have_im = cls_idx_im.size
 
-        if n_have == 0:
-            # Allow split augmentation to proceed even when some classes are absent.
-            continue
-        if n_have >= target_per_class:
-            continue
+        cls_idx_at = np.flatnonzero(y_dec_at == cls)
+        n_have_at = cls_idx_at.size
+
 
         # Do not over-augment: each original sample can create at most two
         # augmented copies.
-        n_add = min(target_per_class - n_have, 2 * n_have)
-        if n_add <= 0:
-            continue
-        pick = cls_idx[np.arange(n_add) % n_have]
+        n_add_im = min(target_per_class - n_have_im, 2 * n_have_im)
+        if n_add_im > 0:
+            pick_im = cls_idx_im[np.arange(n_add_im) % n_have_im]
+
+        n_add_at = min(target_per_class - n_have_at, 2 * n_have_at)
+        if n_add_at > 0:
+            pick_at = cls_idx_at[np.arange(n_add_at) % n_have_at]
 
         # Per-copy scale keeps noise minimal while making repeated copies non-identical.
-        im_scale = rng.uniform(0.95, 1.05, size=(n_add, 1, 1))
-        sp_scale = rng.uniform(0.95, 1.05, size=(n_add, 1, 1))
-        im_noise = rng.normal(0.0, noise_std, size=x_im[pick].shape) * im_scale
-        sp_noise = rng.normal(0.0, noise_std, size=x_sp[pick].shape) * sp_scale
-        im_add = x_im[pick] + im_noise
-        sp_add = x_sp[pick] + sp_noise
-        y_add = np.full(n_add, cls, dtype=np.int32)
+        if n_add_im > 0:
+            im_scale = rng.uniform(0.95, 1.05, size=(n_add_im, 1, 1))
+            im_noise = rng.normal(0.0, noise_std, size=x_im[pick_im].shape) * im_scale
+            im_add = x_im[pick_im] + im_noise
+            y_add_im = np.full(n_add_im, cls, dtype=np.int32)
 
-        x_im_aug.append(im_add.astype(x_im.dtype, copy=False))
-        x_sp_aug.append(sp_add.astype(x_sp.dtype, copy=False))
-        y_aug.append(y_add)
+            x_im_aug.append(im_add.astype(x_im.dtype, copy=False))
+            y_aug_im.append(y_add_im)
+
+        if n_add_at > 0:
+            at_scale = rng.uniform(0.95, 1.05, size=(n_add_at, 1, 1))
+            at_noise = rng.normal(0.0, noise_std, size=x_sp[pick_at].shape) * at_scale
+            at_add = x_sp[pick_at] + at_noise
+            y_add_at = np.full(n_add_at, cls, dtype=np.int32)
+
+            x_at_aug.append(at_add.astype(x_sp.dtype, copy=False))
+            y_aug_at.append(y_add_at)
         
     return (
         np.concatenate(x_im_aug, axis=0),
-        np.concatenate(x_sp_aug, axis=0),
-        np.concatenate(y_aug, axis=0),
+        np.concatenate(x_at_aug, axis=0),
+        np.concatenate(y_aug_im, axis=0),
+        np.concatenate(y_aug_at, axis=0),
     )
 
 
@@ -557,7 +567,7 @@ def run_vector_embedding_pipeline(
     y_at_dec = to_decoded_labels(y_attempted)
     y_li_dec = to_decoded_labels(y_listening)
 
-    # Keep class cardinality fixed (label_num_class), label IDs to contiguous 1..label_num_class
+    # Keep class cardinality fixed (label_num_class), label IDs to contiguous 1..label_num_class for counting
     im_unique = np.unique(y_im_dec)
     at_unique = np.unique(y_at_dec)
     li_unique = np.unique(y_li_dec)
@@ -581,12 +591,7 @@ def run_vector_embedding_pipeline(
         )
 
     target = np.arange(1, label_num_class + 1, dtype=np.int32)
-    # if not np.array_equal(im_unique, target):
-    #     label_map = {int(old): int(new) for old, new in zip(im_unique.tolist(), target.tolist())}
-    #     y_im_dec = np.asarray([label_map[int(v)] for v in y_im_dec], dtype=np.int32)
-    #     y_at_dec = np.asarray([label_map[int(v)] for v in y_at_dec], dtype=np.int32)
-    #     y_li_dec = np.asarray([label_map[int(v)] for v in y_li_dec], dtype=np.int32)
-    #     #remapped class IDs to 1..label_num_class for split stability
+
 
     if use_augmentation:
         split = make_split_indices(
@@ -632,7 +637,7 @@ def run_vector_embedding_pipeline(
     y_val_li = y_li_dec[listening_split.val]
 
     # Train: keep matching so imagined and attempted are class-aligned for CSP and augmentation.
-    x_tr_sp, y_tr_sp = _match_attempted_to_labels(x_attempted, y_at_dec, y_tr_im, label_num_class)
+    x_tr_at, y_tr_at = _match_attempted_to_labels(x_attempted, y_at_dec, y_tr_im, label_num_class)
 
     # Val/Test: independent split so no attempted sample leaks across splits via cycling.
     attempted_split = make_split_indices(
@@ -643,47 +648,49 @@ def run_vector_embedding_pipeline(
         test_ratio=test_ratio,
         enforce_val_class_coverage=enforce_val_class_coverage,
     )
-    x_ts_sp = x_attempted[attempted_split.test]
-    y_ts_sp = y_at_dec[attempted_split.test]
-    x_val_sp = x_attempted[attempted_split.val]
-    y_val_sp = y_at_dec[attempted_split.val]
+    x_ts_at = x_attempted[attempted_split.test]
+    y_ts_at = y_at_dec[attempted_split.test]
+    x_val_at = x_attempted[attempted_split.val]
+    y_val_at = y_at_dec[attempted_split.val]
 
     # Save pre-augmentation labels for per-subject stats export.
     y_pre_im_train = y_tr_im.copy()
     y_pre_im_val = y_val_im.copy()
     y_pre_im_test = y_ts_im.copy()
-    y_pre_sp_train = y_tr_sp.copy()
-    y_pre_sp_val = y_val_sp.copy()
-    y_pre_sp_test = y_ts_sp.copy()
+    y_pre_at_train = y_tr_at.copy()
+    y_pre_at_val = y_val_at.copy()
+    y_pre_at_test = y_ts_at.copy()
     x_pre_im_train = x_tr_im.copy()
     x_pre_im_val = x_val_im.copy()
     x_pre_im_test = x_ts_im.copy()
-    x_pre_sp_train = x_tr_sp.copy()
-    x_pre_sp_val = x_val_sp.copy()
-    x_pre_sp_test = x_ts_sp.copy()
+    x_pre_at_train = x_tr_at.copy()
+    x_pre_at_val = x_val_at.copy()
+    x_pre_at_test = x_ts_at.copy()
     x_pre_li_train = x_tr_li.copy()
     x_pre_li_val = x_val_li.copy()
     x_pre_li_test = x_ts_li.copy()
 
 
     print("\nSplit sizes before augmentation:")
-    print(f"  train: imagined={x_tr_im.shape[0]}, attempted={x_tr_sp.shape[0]}, listening={x_tr_li.shape[0]}")
-    print(f"  val:   imagined={x_val_im.shape[0]}, attempted={x_val_sp.shape[0]}, listening={x_val_li.shape[0]}")
-    print(f"  test:  imagined={x_ts_im.shape[0]}, attempted={x_ts_sp.shape[0]}, listening={x_ts_li.shape[0]}")
+    print(f"  train: imagined={x_tr_im.shape[0]}, attempted={x_tr_at.shape[0]}, listening={x_tr_li.shape[0]}")
+    print(f"  val:   imagined={x_val_im.shape[0]}, attempted={x_val_at.shape[0]}, listening={x_val_li.shape[0]}")
+    print(f"  test:  imagined={x_ts_im.shape[0]}, attempted={x_ts_at.shape[0]}, listening={x_ts_li.shape[0]}")
 
     if use_augmentation:
         rng = np.random.RandomState(seed)
-        x_tr_im, x_tr_sp, y_train_dec = _augment_split_to_target(
+        x_tr_im, x_tr_at, y_train_dec, y_tr_at = _augment_split_to_target(
             x_tr_im,
-            x_tr_sp,
+            x_tr_at,
             y_tr_im,
+            y_tr_at,
             num_class=label_num_class,
             target_per_class=augment_target_per_class,
             noise_std=augment_noise_std,
             rng=rng,
         )
+        
         # Keep attempted-train labels aligned with augmented attempted-train epochs.
-        y_tr_sp = y_train_dec.copy()
+        #y_tr_at = y_train_dec.copy()
 
         y_test_dec = y_ts_im
 
@@ -697,17 +704,17 @@ def run_vector_embedding_pipeline(
         y_test_dec = y_ts_im
         y_val_dec = y_val_im
         # Keep attempted labels explicit and aligned in non-augmented mode.
-        y_tr_sp = y_train_dec.copy()
-        y_val_sp = y_val_dec.copy()
+        y_tr_at = y_train_dec.copy()
+        y_val_at = y_val_dec.copy()
 
     print("Split sizes after augmentation:")
-    print(f"  train: imagined={x_tr_im.shape[0]}, attempted={x_tr_sp.shape[0]}, listening={x_tr_li.shape[0]}")
-    print(f"  val:   imagined={x_val_im.shape[0]}, attempted={x_val_sp.shape[0]}, listening={x_val_li.shape[0]}")
-    print(f"  test:  imagined={x_ts_im.shape[0]}, attempted={x_ts_sp.shape[0]}, listening={x_ts_li.shape[0]}")
+    print(f"  train: imagined={x_tr_im.shape[0]}, attempted={x_tr_at.shape[0]}, listening={x_tr_li.shape[0]}")
+    print(f"  val:   imagined={x_val_im.shape[0]}, attempted={x_val_at.shape[0]}, listening={x_val_li.shape[0]}")
+    print(f"  test:  imagined={x_ts_im.shape[0]}, attempted={x_ts_at.shape[0]}, listening={x_ts_li.shape[0]}")
 
     # Fit shared filters on TRAIN only, using imagined + attempted, with optional listening.
-    x_tr_sources = [x_tr_im, x_tr_sp]
-    y_tr_sources = [y_train_dec, y_tr_sp]
+    x_tr_sources = [x_tr_im, x_tr_at]
+    y_tr_sources = [y_train_dec, y_tr_at]
     if include_listening_in_csp_train:
         x_tr_sources.append(x_tr_li)
         y_tr_sources.append(y_tr_li)
@@ -737,18 +744,18 @@ def run_vector_embedding_pipeline(
     tr_im_ts = apply_linear_derivation(x_tr_im, w)
     ts_im_ts = apply_linear_derivation(x_ts_im, w)
     val_im_ts = apply_linear_derivation(x_val_im, w)
-    tr_sp_ts = apply_linear_derivation(x_tr_sp, w)
-    ts_sp_ts = apply_linear_derivation(x_ts_sp, w)
-    val_sp_ts = apply_linear_derivation(x_val_sp, w)
+    tr_at_ts = apply_linear_derivation(x_tr_at, w)
+    ts_at_ts = apply_linear_derivation(x_ts_at, w)
+    val_at_ts = apply_linear_derivation(x_val_at, w)
     tr_li_ts = apply_linear_derivation(x_tr_li, w)
     ts_li_ts = apply_linear_derivation(x_ts_li, w)
     val_li_ts = apply_linear_derivation(x_val_li, w)
     tr_im_pre_ts = apply_linear_derivation(x_pre_im_train, w)
     ts_im_pre_ts = apply_linear_derivation(x_pre_im_test, w)
     val_im_pre_ts = apply_linear_derivation(x_pre_im_val, w)
-    tr_sp_pre_ts = apply_linear_derivation(x_pre_sp_train, w)
-    ts_sp_pre_ts = apply_linear_derivation(x_pre_sp_test, w)
-    val_sp_pre_ts = apply_linear_derivation(x_pre_sp_val, w)
+    tr_at_pre_ts = apply_linear_derivation(x_pre_at_train, w)
+    ts_at_pre_ts = apply_linear_derivation(x_pre_at_test, w)
+    val_at_pre_ts = apply_linear_derivation(x_pre_at_val, w)
     tr_li_pre_ts = apply_linear_derivation(x_pre_li_train, w)
     ts_li_pre_ts = apply_linear_derivation(x_pre_li_test, w)
     val_li_pre_ts = apply_linear_derivation(x_pre_li_val, w)
@@ -765,20 +772,20 @@ def run_vector_embedding_pipeline(
         "y_pre_imagined_train_dec": y_pre_im_train,
         "y_pre_imagined_test_dec": y_pre_im_test,
         "y_pre_imagined_val_dec": y_pre_im_val,
-        "y_pre_attempted_train_dec": y_pre_sp_train,
-        "y_pre_attempted_test_dec": y_pre_sp_test,
-        "y_pre_attempted_val_dec": y_pre_sp_val,
-        "y_post_attempted_train_dec": y_tr_sp,
-        "y_post_attempted_test_dec": y_ts_sp,
-        "y_post_attempted_val_dec": y_val_sp,
+        "y_pre_attempted_train_dec": y_pre_at_train,
+        "y_pre_attempted_test_dec": y_pre_at_test,
+        "y_pre_attempted_val_dec": y_pre_at_val,
+        "y_post_attempted_train_dec": y_tr_at,
+        "y_post_attempted_test_dec": y_ts_at,
+        "y_post_attempted_val_dec": y_val_at,
 
         # CSP-transformed post-augmentation (log-variance features)
         "post_imagined_train": _segment_variance_log(tr_im_ts, n_sess=n_sess),
         "post_imagined_test": _segment_variance_log(ts_im_ts, n_sess=n_sess),
         "post_imagined_val": _segment_variance_log(val_im_ts, n_sess=n_sess),
-        "post_attempted_train": _segment_variance_log(tr_sp_ts, n_sess=n_sess),
-        "post_attempted_test": _segment_variance_log(ts_sp_ts, n_sess=n_sess),
-        "post_attempted_val": _segment_variance_log(val_sp_ts, n_sess=n_sess),
+        "post_attempted_train": _segment_variance_log(tr_at_ts, n_sess=n_sess),
+        "post_attempted_test": _segment_variance_log(ts_at_ts, n_sess=n_sess),
+        "post_attempted_val": _segment_variance_log(val_at_ts, n_sess=n_sess),
         "post_listening_train": _segment_variance_log(tr_li_ts, n_sess=n_sess),
         "post_listening_test": _segment_variance_log(ts_li_ts, n_sess=n_sess),
         "post_listening_val": _segment_variance_log(val_li_ts, n_sess=n_sess),
@@ -787,9 +794,9 @@ def run_vector_embedding_pipeline(
         "pre_imagined_train": _segment_variance_log(tr_im_pre_ts, n_sess=n_sess),
         "pre_imagined_test": _segment_variance_log(ts_im_pre_ts, n_sess=n_sess),
         "pre_imagined_val": _segment_variance_log(val_im_pre_ts, n_sess=n_sess),
-        "pre_attempted_train": _segment_variance_log(tr_sp_pre_ts, n_sess=n_sess),
-        "pre_attempted_test": _segment_variance_log(ts_sp_pre_ts, n_sess=n_sess),
-        "pre_attempted_val": _segment_variance_log(val_sp_pre_ts, n_sess=n_sess),
+        "pre_attempted_train": _segment_variance_log(tr_at_pre_ts, n_sess=n_sess),
+        "pre_attempted_test": _segment_variance_log(ts_at_pre_ts, n_sess=n_sess),
+        "pre_attempted_val": _segment_variance_log(val_at_pre_ts, n_sess=n_sess),
         "pre_listening_train": _segment_variance_log(tr_li_pre_ts, n_sess=n_sess),
         "pre_listening_test": _segment_variance_log(ts_li_pre_ts, n_sess=n_sess),
         "pre_listening_val": _segment_variance_log(val_li_pre_ts, n_sess=n_sess),
@@ -798,9 +805,9 @@ def run_vector_embedding_pipeline(
         "raw_pre_imagined_train": x_pre_im_train,
         "raw_pre_imagined_test": x_pre_im_test,
         "raw_pre_imagined_val": x_pre_im_val,
-        "raw_pre_attempted_train": x_pre_sp_train,
-        "raw_pre_attempted_test": x_pre_sp_test,
-        "raw_pre_attempted_val": x_pre_sp_val,
+        "raw_pre_attempted_train": x_pre_at_train,
+        "raw_pre_attempted_test": x_pre_at_test,
+        "raw_pre_attempted_val": x_pre_at_val,
         "raw_pre_listening_train": x_pre_li_train,
         "raw_pre_listening_test": x_pre_li_test,
         "raw_pre_listening_val": x_pre_li_val,
@@ -809,9 +816,9 @@ def run_vector_embedding_pipeline(
         "raw_post_imagined_train": x_tr_im,
         "raw_post_imagined_test": x_ts_im,
         "raw_post_imagined_val": x_val_im,
-        "raw_post_attempted_train": x_tr_sp,
-        "raw_post_attempted_test": x_ts_sp,
-        "raw_post_attempted_val": x_val_sp,
+        "raw_post_attempted_train": x_tr_at,
+        "raw_post_attempted_test": x_ts_at,
+        "raw_post_attempted_val": x_val_at,
         "raw_post_listening_train": x_tr_li,
         "raw_post_listening_test": x_ts_li,
         "raw_post_listening_val": x_val_li,
@@ -1368,7 +1375,7 @@ def main() -> None:
     
     for subject_id in subjects:
         print(f"\n=== Processing subject {subject_id} ===")
-        # Coverage can now be enforced for all subjects because subject_label_num_class
+        # Coverage is enforced for all subjects because subject_label_num_class
         # reflects the actual class count.
         enforce_val_class_coverage = True
         raw_all, markers_all, code_to_name = load_data([subject_id], data_dir=eeg_data_dir)

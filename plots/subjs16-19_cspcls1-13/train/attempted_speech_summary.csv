@@ -1,0 +1,4 @@
+task,split,n_trials,n_classes
+attempted_speech,train,1803,74
+attempted_speech,val,444,74
+attempted_speech,test,99,53

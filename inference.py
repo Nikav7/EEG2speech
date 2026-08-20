@@ -14,9 +14,9 @@ from torch.utils.data import DataLoader
 import soundfile as sf
 
 from models import ntGAN
-from models.eeg2melTransformer import TransformerMelSynth
-from previous_scripts.dataset import EEGAudioDataset
-from previous_scripts.utils import load_vocoder, mel_to_vocoder_input
+from models.Meltransformer import TransformerMelSynth
+from dataset import EEGAudioDataset
+from utils import load_vocoder, mel_to_vocoder_input
 
 
 test_path = os.path.join("eegdata")

@@ -20,7 +20,7 @@ def parse_args():
     )
     parser.add_argument(
         "--eeg-source-dir",
-        default=os.path.join("eegdata_250sr_aug9"),
+        default=os.path.join("eegdata_250sr_aug9_1619_rnd1", "raw_post_augmentation_no_csp"), #"raw_pre_augmentation" "csp_post_augmentation" "raw_post_augmentation_no_csp"
         help="Root folder containing task subfolders (imagined_speech, attempted_speech, listening), each with train/val/test.",
     )
     parser.add_argument(
@@ -32,8 +32,8 @@ def parse_args():
     )
     parser.add_argument(
         "--output-dir",
-        default="plots_augmented/csp_post_augmentation_cls1-13",
-        help="Directory where UMAP/t-SNE plots are saved..",
+        default=os.path.join("plots", "eegdata_250sr_aug9_1619_rnd1", "raw_post_augmentation_no_csp"), # "plots/subjs16-19_cspcls1-13" "plots/subjs16-19_raw_pre_augmentation"
+        help="Directory where UMAP/t-SNE plots are saved.."
     )
     parser.add_argument(
         "--seed",
@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument(
         "--tasks",
         nargs="+",
-        default=["imagined_speech", "attempted_speech", "listening"],
+        default=["attempted_speech", "imagined_speech", "listening"],
         help="EEG tasks to analyze.",
     )
     parser.add_argument(
@@ -66,7 +66,7 @@ def parse_args():
     )
     parser.add_argument(
         "--feature-label",
-        default="EEG data post-augmentation and CSP transformation.",
+        default="Raw EEG data after split.",
         help="Label describing the feature/data type used in plot titles.",
     )
     return parser.parse_args()
@@ -416,6 +416,148 @@ def plot_tsne_splits(
     plt.close(fig)
 
 
+def plot_sample_counts_by_condition(
+    split_data,
+    out_path: str,
+    condition_names: dict,
+    subject_ids,
+    split_name: str,
+    color_by: str = None,
+    id_to_name: dict = None,
+    
+):
+    """Plot stacked sample counts per condition, colored by subject or class."""
+    if color_by not in {"subject", "class"}:
+        raise ValueError("color_by must be either 'subject' or 'class'")
+
+    condition_ids = sorted(condition_names)
+    subject_ids = sorted(int(subject_id) for subject_id in subject_ids)
+
+    condition_to_idx = {condition_id: idx for idx, condition_id in enumerate(condition_ids)}
+    y_condition = np.asarray(split_data.get("y_condition", []), dtype=np.int32)
+    y_subject = np.asarray(split_data.get("y_subject", []), dtype=np.int32)
+    y_class = np.asarray(split_data.get("y", []), dtype=np.int32)
+
+    if color_by == "subject":
+        category_ids = subject_ids
+        category_to_idx = {category_id: idx for idx, category_id in enumerate(category_ids)}
+        category_labels = [f"Subject {category_id}" for category_id in category_ids]
+        title_suffix = "by subject"
+    else:
+        category_ids = sorted(int(class_id) for class_id in np.unique(y_class))
+        category_to_idx = {category_id: idx for idx, category_id in enumerate(category_ids)}
+        category_labels = [
+            f"Class {class_id}: {id_to_name.get(class_id, class_id) if id_to_name else class_id}"
+            for class_id in category_ids
+        ]
+        title_suffix = "by class"
+
+    counts = np.zeros((len(condition_ids), len(category_ids)), dtype=np.int32)
+
+    color_values = y_subject if color_by == "subject" else y_class
+    for condition_id, color_value in zip(y_condition, color_values):
+        condition_idx = condition_to_idx.get(int(condition_id))
+        category_idx = category_to_idx.get(int(color_value))
+        if condition_idx is not None and category_idx is not None:
+            counts[condition_idx, category_idx] += 1
+
+    fig, ax = plt.subplots(figsize=(max(9, len(condition_ids) * 1.2), 7))
+    x = np.arange(len(condition_ids))
+    bottoms = np.zeros(len(condition_ids), dtype=np.int32)
+    cmap = plt.get_cmap("tab20", max(1, len(category_ids)))
+
+    for category_idx, category_label in enumerate(category_labels):
+        values = counts[:, category_idx]
+        ax.bar(
+            x,
+            values,
+            bottom=bottoms,
+            color=cmap(category_idx),
+            label=category_label,
+            edgecolor="white",
+            linewidth=0.5,
+        )
+        bottoms += values
+
+    condition_totals = counts.sum(axis=1)
+    condition_labels = [
+        f"{condition_names[condition_id]} (n={total})"
+        for condition_id, total in zip(condition_ids, condition_totals)
+    ]
+    ax.set_xticks(x)
+    ax.set_xticklabels(condition_labels)
+    ax.set_xlabel("Condition")
+    ax.set_ylabel(f"Number of samples (total={int(condition_totals.sum())})")
+    ax.set_ylim(0, 1000)
+    ax.set_title(f"Number of samples per condition {title_suffix} ({SPLIT_LABELS[split_name]})")
+    ax.grid(axis="y", alpha=0.25)
+    ax.set_axisbelow(True)
+    ax.legend(title="Subjects", loc="upper left", bbox_to_anchor=(1.01, 1), frameon=False)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
+def save_class_subject_counts_csv(split_data, out_path: str, subject_ids):
+    """Save a class-by-subject sample-count table for one split."""
+    subject_ids = sorted(int(subject_id) for subject_id in subject_ids)
+    class_ids = sorted(int(class_id) for class_id in np.unique(split_data.get("y", [])))
+    counts = np.zeros((len(class_ids), len(subject_ids)), dtype=np.int32)
+
+    class_to_idx = {class_id: idx for idx, class_id in enumerate(class_ids)}
+    subject_to_idx = {subject_id: idx for idx, subject_id in enumerate(subject_ids)}
+    y_class = np.asarray(split_data.get("y", []), dtype=np.int32)
+    y_subject = np.asarray(split_data.get("y_subject", []), dtype=np.int32)
+
+    for class_id, subject_id in zip(y_class, y_subject):
+        class_idx = class_to_idx.get(int(class_id))
+        subject_idx = subject_to_idx.get(int(subject_id))
+        if class_idx is not None and subject_idx is not None:
+            counts[class_idx, subject_idx] += 1
+
+    counts_df = pd.DataFrame(
+        counts,
+        index=[f"class_{class_id}" for class_id in class_ids],
+        columns=[f"subject_{subject_id}" for subject_id in subject_ids],
+    )
+    counts_df.index.name = "class"
+    counts_df.to_csv(out_path)
+
+
+def save_class_condition_counts_csv(
+    split_data,
+    out_path: str,
+    subject_id: int,
+    condition_names: dict,
+):
+    """Save a class-by-condition sample-count table for one subject and split."""
+    condition_ids = sorted(int(condition_id) for condition_id in condition_names)
+    class_ids = sorted(int(class_id) for class_id in np.unique(split_data.get("y", [])))
+    counts = np.zeros((len(class_ids), len(condition_ids)), dtype=np.int32)
+
+    class_to_idx = {class_id: idx for idx, class_id in enumerate(class_ids)}
+    condition_to_idx = {condition_id: idx for idx, condition_id in enumerate(condition_ids)}
+    y_class = np.asarray(split_data.get("y", []), dtype=np.int32)
+    y_subject = np.asarray(split_data.get("y_subject", []), dtype=np.int32)
+    y_condition = np.asarray(split_data.get("y_condition", []), dtype=np.int32)
+
+    for class_id, current_subject_id, condition_id in zip(y_class, y_subject, y_condition):
+        if int(current_subject_id) != int(subject_id):
+            continue
+        class_idx = class_to_idx.get(int(class_id))
+        condition_idx = condition_to_idx.get(int(condition_id))
+        if class_idx is not None and condition_idx is not None:
+            counts[class_idx, condition_idx] += 1
+
+    counts_df = pd.DataFrame(
+        counts,
+        index=[f"class_{class_id}" for class_id in class_ids],
+        columns=[condition_names[condition_id] for condition_id in condition_ids],
+    )
+    counts_df.index.name = "class"
+    counts_df.to_csv(out_path)
+
+
 def main():
     args = parse_args()
 
@@ -570,6 +712,7 @@ def main():
                     [class_to_idx[int(class_id)] for class_id in y], dtype=np.int32
                 )
 
+
         tsne_file = os.path.join(output_dir, f"tsne_{task_name}_by_split.png")
         plot_tsne_splits(
             split_data=split_data,
@@ -635,6 +778,41 @@ def main():
 
         cumulative_ready[split_name]["y_color"] = np.zeros_like(cumulative_ready[split_name]["y"])
 
+        sample_counts_path = os.path.join(output_dir, f"sample_counts_by_condition_{split_name}.png")
+        plot_sample_counts_by_condition(
+            split_data=cumulative_ready[split_name],
+            out_path=sample_counts_path,
+            condition_names=condition_idx_to_name,
+            subject_ids=args.subject_id,
+            split_name=split_name,
+            color_by="subject",
+            id_to_name=id_to_name,
+        )
+        print("Saved sample-count plot:", sample_counts_path)
+
+        class_subject_counts_path = os.path.join(
+            output_dir, f"sample_counts_by_class_subject_{split_name}.csv"
+        )
+        save_class_subject_counts_csv(
+            split_data=cumulative_ready[split_name],
+            out_path=class_subject_counts_path,
+            subject_ids=args.subject_id,
+        )
+        print("Saved class-subject count summary:", class_subject_counts_path)
+
+        for subject_id in args.subject_id:
+            class_condition_counts_path = os.path.join(
+                output_dir,
+                f"sample_counts_by_class_condition_subj{subject_id}_{split_name}.csv",
+            )
+            save_class_condition_counts_csv(
+                split_data=cumulative_ready[split_name],
+                out_path=class_condition_counts_path,
+                subject_id=subject_id,
+                condition_names=condition_idx_to_name,
+            )
+            print("Saved subject class-condition summary:", class_condition_counts_path)
+
     cumulative_has_samples = any(cumulative_ready[split_name]["x"].shape[0] > 0 for split_name in SPLITS)
     if cumulative_has_samples:
         cumulative_path = os.path.join(output_dir, "tsne_all_conditions_by_split.png")
@@ -665,7 +843,6 @@ def main():
             axis_label_fontsize=tsne_axis_label_fontsize,
         )
         print("Saved cumulative subject t-SNE plot:", cumulative_subject_path)
-
 
 if __name__ == "__main__":
     main()

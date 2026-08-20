@@ -27,10 +27,10 @@ ORIGINAL_MELS = os.path.join(PROJECT_ROOT, "audiodata", "logmel22")
 
 SR = 22050
 
-N_MELS = 80
+N_MELS = 40
 FMIN = 20.0
 FMAX = SR / 2.0
-N_MFCC = 40
+N_MFCC = 80
 W2V_MODEL_NAME = "facebook/wav2vec2-base-960h"
 HUBERT_MODEL_NAME = "facebook/hubert-large-ls960-ft"
 W2V_FT_PATH = os.path.join(PROJECT_ROOT, "wav2vec2_finetuned")

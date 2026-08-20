@@ -1,5 +1,5 @@
 metric,mean,std,min,min_sample,max,max_sample
-mcd,406.506074,65.778248,297.425121,label021_trial0023_pred_Foot.wav,558.337656,label066_trial0004_pred_Sure.wav
+mcd,426.909652,65.240045,317.273305,label021_trial0023_pred_Foot.wav,574.571679,label066_trial0004_pred_Sure.wav
 pesq,N/A,N/A,N/A,N/A,N/A,N/A
 cer_wav2vec_base,1.057576,0.392224,0.500000,label022_trial0009_pred_Feet.wav,2.666667,label060_trial0008_pred_How.wav
 cer_gt_wav2vec_base,0.326768,0.397063,N/A,N/A,N/A,N/A
