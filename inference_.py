@@ -481,7 +481,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--generator-checkpoint",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\TrainResult22KHz_710_wav2vecFTfrom384\subj18\imagined_speech\savemodel\BEST_checkpoint_g_epoch537.pt",
+		default=r"C:\Users\hssn_\Desktop\EEG2speech\TrainResult22kHz_FT_3subs1618\subj16-17-18\imagined_speech\savemodel\BEST_checkpoint_g_epoch440.pt",
 		help="Path to trained generator checkpoint",
 	)
 	parser.add_argument(
@@ -493,13 +493,13 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--test-eeg-dir",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\eegdata",
+		default=r"C:\Users\hssn_\Desktop\EEG2speech\eegdata_250sr_aug9_1619_cspcls1-13",
 		help="Either a single test CSV folder (.../subjXX/imagined_speech/test) or a root folder containing subjXX subfolders",
 	)
 	parser.add_argument(
 		"--subjects",
 		type=str,
-		default="18",
+		default="16,17,18,19",
 		help="Optional comma-separated subject IDs to run (e.g. subj16,subj17 or 16,17)",
 	)
 
@@ -575,7 +575,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--output-dir",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\inference22kHz_sub18_bestep537",
+		default=r"C:\Users\hssn_\Desktop\EEG2speech\inference22kHz_3subs1618_bestep440",
 		help="Directory to save outputs as per-subject subfolders (mel_csv + wav)",
 	)
 	return parser.parse_args()

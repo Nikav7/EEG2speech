@@ -4,7 +4,7 @@ import os
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import pandas as pd
 
 import numpy as np
@@ -289,12 +289,33 @@ def run_vector_embedding_pipeline(
     y_at_dec = to_decoded_labels(y_attempted)
     y_li_dec = to_decoded_labels(y_listening)
 
-    # 1. Split Each Condition Independently
-    split_im = make_split_indices(y_im_dec, num_class=label_num_class, seed=seed, val_ratio=val_ratio, test_ratio=test_ratio, enforce_val_class_coverage=enforce_val_class_coverage)
-    split_at = make_split_indices(y_at_dec, num_class=label_num_class, seed=seed + 1, val_ratio=val_ratio, test_ratio=test_ratio, enforce_val_class_coverage=enforce_val_class_coverage)
-    split_li = make_split_indices(y_li_dec, num_class=label_num_class, seed=seed + 2, val_ratio=val_ratio, test_ratio=test_ratio, enforce_val_class_coverage=enforce_val_class_coverage)
+# Class-coverage splits for Imagined and Attempted, split Each Condition Independently
+    split_im = make_split_indices(
+        y_im_dec, num_class=label_num_class, seed=seed, 
+        val_ratio=val_ratio, test_ratio=test_ratio, 
+        enforce_val_class_coverage=enforce_val_class_coverage
+    )
+    split_at = make_split_indices(
+        y_at_dec, num_class=label_num_class, seed=seed, 
+        val_ratio=val_ratio, test_ratio=test_ratio, 
+        enforce_val_class_coverage=enforce_val_class_coverage
+    )
 
-    # Unaugmented (Pre) Data Assignments
+    # Simple random split (70/20/10) for Listening
+    # split_li = make_simple_split_indices(
+    #     n_total=len(y_li_dec),
+    #     seed=seed,
+    #     val_ratio=0.1,  # 0.2
+    #     test_ratio=test_ratio # 0.1
+    # )
+
+    split_li = make_split_indices(
+            y_li_dec, num_class=label_num_class, seed=seed, 
+            val_ratio=val_ratio, test_ratio=test_ratio, 
+            enforce_val_class_coverage=enforce_val_class_coverage
+        )
+    
+
     x_tr_im_pre, y_tr_im_pre = x_imagined[split_im.train], y_im_dec[split_im.train]
     x_val_im_pre, y_val_im_pre = x_imagined[split_im.val], y_im_dec[split_im.val]
     x_ts_im_pre, y_ts_im_pre = x_imagined[split_im.test], y_im_dec[split_im.test]
@@ -472,7 +493,7 @@ def save_csp_metadata(all_subject_metadata: List[Dict[str, Any]], output_dir: st
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--subjects", nargs="+", type=int, default=[15, 16, 17, 18, 19])
+    parser.add_argument("--subjects", nargs="+", type=int, default=[16, 17, 18, 19])
     parser.add_argument("--eeg-data-dir", default="clean_data01-120Hz")
     parser.add_argument("--output-dir", default="eegdata_250sr_new")
     parser.add_argument("--non-augmented-output-dir", default="non_augmented")

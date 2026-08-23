@@ -1,0 +1,4 @@
+task,split,n_trials,n_classes
+listening,train,488,74
+listening,val,141,64
+listening,test,68,47

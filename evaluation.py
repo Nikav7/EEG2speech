@@ -886,6 +886,57 @@ def plot_mcd_matrix(dist_matrix: np.ndarray, wav_names: list, out_path: str, wor
     print(f"Saved MCD matrix plot: {out_path}")
 
 
+def paired_spectrograms_plot(
+    paired_rows: List[dict],
+    generated_mel_dir: str,
+    original_mel_dir: str,
+    out_dir: str,
+    sr: int = SR,
+    fmin: float = FMIN,
+    fmax: float = FMAX,
+) -> None:
+    """Plots and saves side-by-side comparisons of reference and generated mel-spectrograms."""
+    plots_dir = os.path.join(out_dir, "spectrogram_pairs")
+    os.makedirs(plots_dir, exist_ok=True)
+
+    for row in paired_rows:
+        ref_mel = _load_mel_csv_clean(os.path.join(original_mel_dir, row["reference_mel"]))
+        gen_mel = _load_mel_csv_clean(os.path.join(generated_mel_dir, row["generated_mel"]))
+
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+
+        img0 = librosa.display.specshow(
+            ref_mel,
+            sr=sr,
+            x_axis="time",
+            y_axis="mel",
+            fmin=fmin,
+            fmax=fmax,
+            ax=axes[0],
+        )
+        axes[0].set_title(f"Reference: {row['word']} (Class {row['class_label']})")
+        fig.colorbar(img0, ax=axes[0], format="%+2.0f dB")
+
+        img1 = librosa.display.specshow(
+            gen_mel,
+            sr=sr,
+            x_axis="time",
+            y_axis="mel",
+            fmin=fmin,
+            fmax=fmax,
+            ax=axes[1],
+        )
+        axes[1].set_title(f"Generated: {row['word']} (Class {row['class_label']})")
+        fig.colorbar(img1, ax=axes[1], format="%+2.0f dB")
+
+        plt.tight_layout()
+
+        safe_word = re.sub(r'[\\/*?:"<>|]', "", row["word"])
+        out_path = os.path.join(plots_dir, f"pair_class_{row['class_label']:02d}_{safe_word}.png")
+
+        plt.savefig(out_path, dpi=300)
+        plt.close(fig)
+
 
 def plot_mel_kmeans_clusters(
     mel_arr: np.ndarray,
@@ -1173,6 +1224,17 @@ if __name__ == "__main__":
             generated_mel_dir=generated_mel_dir,
             original_mel_dir=ORIGINAL_MELS,
             word_labels=word_labels,
+        )
+
+        
+        paired_spectrograms_plot(
+            paired_rows=paired_rows,
+            generated_mel_dir=generated_mel_dir,
+            original_mel_dir=ORIGINAL_MELS,
+            out_dir=output_dir,
+            sr=SR,
+            fmin=FMIN,
+            fmax=FMAX,
         )
 
         mcd_rows = compute_mcd_paired_rows(

@@ -8,8 +8,10 @@ eegdata_250sr_aug9_1519/
 eegdata_250sr_aug9_1619_cspcls1-13/
 eegdata_250sr_aug9_1619_rnd1/
 eegdata_250sr_aug9_1619_rnd2/
+eegdata_250sr_aug9_1519_1-13repro/
+eegdata_250sr_aug9_1619_1-13/
 old_data/
-eegdata_250sr_minaug/
+eegdata_250sr_minaugrepro/
 eegdata15to19_250srNOAUG/
 best_models/
 clean_data01-120Hz/

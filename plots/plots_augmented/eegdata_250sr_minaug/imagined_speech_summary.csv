@@ -1,0 +1,4 @@
+task,split,n_trials,n_classes
+imagined_speech,train,2649,74
+imagined_speech,val,654,74
+imagined_speech,test,144,66

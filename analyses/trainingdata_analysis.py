@@ -20,7 +20,7 @@ def parse_args():
     )
     parser.add_argument(
         "--eeg-source-dir",
-        default=os.path.join("eegdata_250sr_aug9_1619_rnd1", "raw_post_augmentation_no_csp"), #"raw_pre_augmentation" "csp_post_augmentation" "raw_post_augmentation_no_csp"
+        default=os.path.join("eegdata_250sr_aug9_1619_cspcls1-13"), #"raw_pre_augmentation" "csp_post_augmentation" "raw_post_augmentation_no_csp"
         help="Root folder containing task subfolders (imagined_speech, attempted_speech, listening), each with train/val/test.",
     )
     parser.add_argument(
@@ -32,7 +32,7 @@ def parse_args():
     )
     parser.add_argument(
         "--output-dir",
-        default=os.path.join("plots", "eegdata_250sr_aug9_1619_rnd1", "raw_post_augmentation_no_csp"), # "plots/subjs16-19_cspcls1-13" "plots/subjs16-19_raw_pre_augmentation"
+        default=os.path.join("plots","eegdata_250sr_aug9_1619_cspcls1-13", "csp_post_augmentation"), # "plots/subjs16-19_cspcls1-13" "plots/subjs16-19_raw_pre_augmentation"
         help="Directory where UMAP/t-SNE plots are saved.."
     )
     parser.add_argument(
@@ -66,7 +66,7 @@ def parse_args():
     )
     parser.add_argument(
         "--feature-label",
-        default="Raw EEG data after split.",
+        default="EEG after augmentation and CSP.",
         help="Label describing the feature/data type used in plot titles.",
     )
     return parser.parse_args()
@@ -488,7 +488,7 @@ def plot_sample_counts_by_condition(
     ax.set_xticklabels(condition_labels)
     ax.set_xlabel("Condition")
     ax.set_ylabel(f"Number of samples (total={int(condition_totals.sum())})")
-    ax.set_ylim(0, 1000)
+    ax.set_ylim(0, 2500)
     ax.set_title(f"Number of samples per condition {title_suffix} ({SPLIT_LABELS[split_name]})")
     ax.grid(axis="y", alpha=0.25)
     ax.set_axisbelow(True)
