@@ -201,8 +201,6 @@ class Generator(torch.nn.Module):
                     mode='bilinear',
                     align_corners=False,
                 )
-        # elif x.size(-1) != target_time_steps:
-        #     x = F.interpolate(x, size=target_time_steps, mode='linear', align_corners=False)
 
         return x
 
@@ -313,70 +311,3 @@ class Discriminator(torch.nn.Module):
         remove_weight_norm(self.conv_pre)
         remove_weight_norm(self.conv_post)
             
-
-# substituting GRU with attention layer
-
-# class Generator(torch.nn.Module):
-#     def __init__(self, h):
-#         super(Generator, self).__init__()
-#         self.h = h
-#         self.num_kernels = len(h.resblock_kernel_sizes)
-#         self.num_upsamples = len(h.upsample_rates)
-#         self.i_mid = 0
-        
-#         # Initial projection to the hidden dimension
-#         # Assuming h.ch_init_upsample is your base channel size
-#         hidden_dim = h.ch_init_upsample // 2
-#         self.conv_pre = LazyConv1d(hidden_dim, 3, 1, padding=get_padding(3, 1))
-        
-#         # --- Transformer Encoder Layer ---
-#         # nhead should divide hidden_dim evenly (e.g., if hidden_dim=256, nhead=8)
-#         encoder_layer = nn.TransformerEncoderLayer(
-#             d_model=hidden_dim, 
-#             nhead=8, 
-#             dim_feedforward=hidden_dim * 4,
-#             dropout=0.1,
-#             activation='relu',
-#             batch_first=True 
-#         )
-#         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=3)
-#         # ---------------------------------
-
-#         self.ups = nn.ModuleList()
-#         for i, (u, k) in enumerate(zip(h.upsample_rates, h.upsample_kernel_sizes)):
-#             self.ups.append(weight_norm(
-#                 ConvTranspose1d(h.ch_init_upsample // (2**i), 
-#                                 h.ch_init_upsample // (2**(i+1)),
-#                                 k, u, padding=(k-u)//2)))
-        
-#         # ... rest of __init__ (resblocks, conv_post, etc.) ...
-
-#     def forward(self, x):
-#         # handle 4D to 3D reshape
-
-#         #Initial Convolution
-#         x = self.conv_pre(x) # [Batch, Channels, Time]
-        
-#         #Transformer Processing
-#         # Transformer expects [Batch, Seq_Len, Features], so we transpose
-#         x = x.transpose(1, 2) 
-#         x = self.transformer_encoder(x)
-#         x = x.transpose(1, 2) # Back to [Batch, Channels, Time]
-
-#         #Upsampling and ResBlocks
-#         for i in range(self.num_upsamples):
-#             if i == self.i_mid:
-#                 x = self.conv_mid1(x)
-#             x = F.leaky_relu(x, LRELU_SLOPE)
-#             x = self.ups[i](x)
-            
-#             xs = None
-#             for j in range(self.num_kernels):
-#                 if xs is None:
-#                     xs = self.resblocks[i*self.num_kernels+j](x)
-#                 else:
-#                     xs += self.resblocks[i*self.num_kernels+j](x)
-#             x = xs / self.num_kernels
-            
-#         # output layer(s)
-#         return x

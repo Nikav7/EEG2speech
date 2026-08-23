@@ -376,7 +376,7 @@ def run_vector_embedding_pipeline(
         "raw_post_attempted_train": x_tr_at, "raw_post_attempted_val": x_val_at, "raw_post_attempted_test": x_ts_at,
         "raw_post_listening_train": x_tr_li_pre, "raw_post_listening_val": x_val_li_pre, "raw_post_listening_test": x_ts_li_pre,
 
-        # CSP Filtered Features (Listening filtered via transform W)
+        # CSP Filtered Features
         "post_imagined_train": _segment_variance_log(apply_linear_derivation(x_tr_im, w), n_sess),
         "post_imagined_val": _segment_variance_log(apply_linear_derivation(x_val_im, w), n_sess),
         "post_imagined_test": _segment_variance_log(apply_linear_derivation(x_ts_im, w), n_sess),

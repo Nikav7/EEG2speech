@@ -138,7 +138,7 @@ def add_discrete_colorbar(fig, ax, cmap, norm, class_ids, id_to_name: dict = Non
 
 
 def parse_class_id(filename: str):
-    # Support both legacy names like class_12_*.csv and current names like label012_*.csv.
+    # both names like class_12_*.csv and names like label012_*.csv.
     patterns = [r"class_(\d+)", r"label(\d+)"]
     for pattern in patterns:
         match = re.search(pattern, filename)
@@ -229,7 +229,7 @@ def fit_tsne(x: np.ndarray, seed: int, n_components: int = 2):
         n_components=n_components,
         random_state=seed,
         perplexity=perplexity,
-        init="pca",
+        init="ica",
         learning_rate="auto",
     )
     return model.fit_transform(x)
@@ -753,7 +753,6 @@ def main():
         summary_df.to_csv(summary_path, index=False)
 
         #print("Saved UMAP 2D plot:", umap2d_path)
-        #print("Saved UMAP 3D plot:", umap3d_path)
         print("Saved t-SNE plot:", tsne_file)
         print("Saved summary:", summary_path)
 

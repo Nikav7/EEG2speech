@@ -4,7 +4,7 @@
 
 #PIPELINE: 
 # [EEG Timeline] -> [Transformer Generator] -> [Predicted Spectrogram]
-# [Generated Mel] -> [vocoding, e.g. HiFi-GAN, default griffin-lim] -> [Waveform Tensor] -> [Wav2Vec2] -> [Continuous Logits] -> [CTC Loss] -> (Backpropagation)
+# [Generated Mel] -> [vocoding, e.g. HiFi-GAN] -> [Waveform Tensor] -> [Wav2Vec2] -> [CTC Loss] -> (Backpropagation)
 
 
 
@@ -136,42 +136,36 @@ class TransformerMelSynth(nn.Module):
         return x
 
 
-# --- Helpers ---
 def count_parameters(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-# --- Quick test ---
-if __name__ == "__main__":
-    # Typical CSP shapes from CSPAudioDataset: (B, 1, csp_components, T)
-    BATCH = 16
-    INPUT_CHANNELS = 1
-    CSP_COMPONENTS = 105   # CSP components count
-    TIME_STEPS = 85       # time dimension
-    OUTPUT_MEL_BINS = 80
 
-    model = TransformerMelSynth(
-        input_channels=INPUT_CHANNELS,
-        input_freq_bins=CSP_COMPONENTS,
-        output_mel_bins=OUTPUT_MEL_BINS,
-        transformer_d_model=128,
-        transformer_nhead=8,
-        transformer_dim_feedforward=512,
-        transformer_num_layers=6,
-        dropout=0.1,
-    )
+# if __name__ == "__main__":
+#     # CSP shapes (B, 1, csp_components, T)
+#     BATCH = 16
+#     INPUT_CHANNELS = 1
+#     CSP_COMPONENTS = 104   # CSP components count
+#     TIME_STEPS = 16       # time dimension
+#     OUTPUT_MEL_BINS = 80
 
-    print("--- Model Architecture ---")
-    print(model)
-    print(f"\nTrainable parameters: {count_parameters(model):,}")
+#     model = TransformerMelSynth(
+#         input_channels=INPUT_CHANNELS,
+#         input_freq_bins=CSP_COMPONENTS,
+#         output_mel_bins=OUTPUT_MEL_BINS,
+#         transformer_d_model=128,
+#         transformer_nhead=8,
+#         transformer_dim_feedforward=512,
+#         transformer_num_layers=6,
+#         dropout=0.1,
+#     )
 
-    dummy_input = torch.randn(BATCH, INPUT_CHANNELS, CSP_COMPONENTS, TIME_STEPS)
-    print(f"\nInput shape:  {tuple(dummy_input.shape)}")
+#     print("--- Model Architecture ---")
+#     print(model)
+#     print(f"\nTrainable parameters: {count_parameters(model):,}")
 
-    try:
-        output = model(dummy_input)
-        print(f"Output shape: {tuple(output.shape)}")
-        assert output.shape == (BATCH, 1, OUTPUT_MEL_BINS, TIME_STEPS), "Shape mismatch!"
-        print("Shape check passed.")
-    except Exception as e:
-        print(f"Error: {e}")
+#     dummy_input = torch.randn(BATCH, INPUT_CHANNELS, CSP_COMPONENTS, TIME_STEPS)
+#     print(f"\nInput shape:  {tuple(dummy_input.shape)}")
+#     output = model(dummy_input)
+#     print(f"\nOutput shape: {tuple(output.shape)}")
+#     assert output.shape == (BATCH, 1, OUTPUT_MEL_BINS, TIME_STEPS), "Shape mismatch"
