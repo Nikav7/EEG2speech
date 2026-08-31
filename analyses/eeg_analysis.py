@@ -4,12 +4,16 @@ import matplotlib.pyplot as plt
 import mne
 import numpy as np
 import pandas as pd
+from sklearn.manifold import TSNE
+from matplotlib.colors import BoundaryNorm, ListedColormap
+from matplotlib.patches import Patch
+from trainingdata_analysis import make_distinct_colormap, load_event_names, plot_tsne_splits
 
 # Load EEG data and events for subjects:
 subjects = [15, 16, 17, 18, 19]
-data_dir = 'clean_data025-120Hz'
-SFREQ = 1000.0
-EVENT_SFREQ = 1000.0  # Original event sampling basis
+DATA_DIR = 'C:/Users/hssn_/Desktop/EEG2speech/clean_data01-120Hz'
+SFREQ = 250.0
+EVENT_SFREQ = 250.0  
 COND3_FILTER_BAND = (0.25, 40.0)
 
 CONDITION_BASE = {1: 100, 2: 200, 3: 400}
@@ -17,8 +21,14 @@ CONDITION_NAMES = {1: 'Imagined speech', 2: 'Listening', 3: 'Attempted speech'}
 # Time windows per condition for cisualization in the time domain (in seconds)
 COND_TWIN= {1: (-0.5, 2.5), 2: (-0.5, 2.5), 3: (-0.5, 3.5)}
 
+COND_TWIN_tsne= {1: (0.0, 2.0), 2: (0.0, 2.0), 3: (0.2, 2.2)}
 
-def load_data(subjects, data_dir='clean_data025-120Hz'):
+tsne = True  
+
+event_names = load_event_names('events_codes.csv')
+
+
+def load_data(subjects, data_dir=DATA_DIR):
     event_sfreq = EVENT_SFREQ
     event_df = pd.read_csv('events_codes.csv', header=None, names=['word', 'code', 'type'])
     code_to_name = dict(zip(event_df['code'], event_df['word'].str.strip("'")))
@@ -78,8 +88,11 @@ def extract_epochs(raw_all, markers_all):
             cond_codes = [c for c in codes if base <= c < base + 100]
             if not cond_codes:
                 continue
-
-            tmin, tmax = COND_TWIN[cond]
+            if tsne:
+                tmin, tmax = COND_TWIN_tsne[cond]
+            else:
+                tmin, tmax = COND_TWIN[cond]
+            
             epochs_all[cond][subject] = mne.Epochs(
                 raw_all[subject],
                 markers,
@@ -87,11 +100,14 @@ def extract_epochs(raw_all, markers_all):
                 tmin=tmin,
                 tmax=tmax,
                 picks='eeg',
-                baseline=(-0.5, 0.0),
+                baseline=None,
                 preload=True,
                 reject=None,
                 flat=None,
             )
+
+            epochs_all[cond][subject].drop_log_stats()
+    
 
     return epochs_all
 
@@ -129,9 +145,274 @@ def print_evoked_summary(label, epochs_dict, evoked_dict):
     else:
         print('  per-subject (original->used): none')
 
+def fit_tsne(x: np.ndarray, seed: int, n_components: int = 2):
+    if x.shape[0] < 3:
+        return None
+
+    perplexity = min(30, max(5, x.shape[0] // 10), x.shape[0] - 1)
+    if perplexity < 2:
+        return None
+
+    model = TSNE(
+        n_components=n_components,
+        random_state=seed,
+        perplexity=perplexity,
+        init="pca",
+        learning_rate="auto",
+    )
+    return model.fit_transform(x)
+
+
+def _build_legend_layout(n_items: int):
+    ncol = min(10, max(1, n_items))
+    nrows = int(np.ceil(n_items / ncol))
+    bottom_pad = 0.12 + max(0, nrows - 1) * 0.035
+    return ncol, bottom_pad
+
+
+def prepare_tsne_data(epochs_all):
+    """Converts nested MNE Epochs dict into flattened 2D arrays & subject IDs per condition."""
+    tsne_data = {}
+    for cond, subjs_dict in epochs_all.items():
+        x_list, y_subj_list = [], []
+        for subj_id, ep in subjs_dict.items():
+            if len(ep) == 0:
+                continue
+            data = ep.get_data()  # Shape: (n_epochs, n_channels, n_times)
+            n_epochs = data.shape[0]
+            
+            # Flatten channel x time per epoch into 1D feature vector
+            data_2d = data.reshape(n_epochs, -1)
+            
+            x_list.append(data_2d)
+            y_subj_list.extend([subj_id] * n_epochs)
+
+        if x_list:
+            tsne_data[cond] = {
+                "x": np.vstack(x_list),
+                "y_subject": np.array(y_subj_list),
+            }
+        else:
+            tsne_data[cond] = {
+                "x": np.empty((0, 0)),
+                "y_subject": np.array([]),
+            }
+    return tsne_data
+
+import matplotlib.pyplot as plt
+from matplotlib.colors import BoundaryNorm
+from matplotlib.patches import Patch
+import numpy as np
+
+
+def plot_tsne(
+    eeg_data,
+    title: str,
+    seed: int,
+    title_fontsize: int = 18,
+    legend_fontsize: int = 13,  # Reduced default to fit 74 classes
+    subplot_title_fontsize: int = 15,
+    axis_label_fontsize: int = 11,
+    events_ids=None,
+    color_mode: str = "subject",  # "subject" or "event"
+):
+    fig, axes = plt.subplots(1, 3, figsize=(20, 7))
+
+    # Get unique subject IDs
+    subj_ids = sorted(
+        {
+            int(v)
+            for cond in CONDITION_BASE
+            for v in eeg_data[cond]["y_subject"]
+        }
+    )
+    n_subjs = len(subj_ids)
+
+  
+    if color_mode == "event":
+        class_codes = list(events_ids.keys())
+        id_to_name = events_ids
+
+        n_classes = len(class_codes)
+        code_to_idx = {int(code): i for i, code in enumerate(class_codes)}
+
+        cmap = make_distinct_colormap(n_classes)
+
+        legend_handles = []
+        for idx, class_id in enumerate(class_codes):
+            name = (
+                id_to_name.get(int(class_id), str(int(class_id)))
+                if isinstance(id_to_name, dict)
+                else str(int(class_id))
+            )
+            legend_handles.append(
+                Patch(
+                    facecolor=cmap(idx),
+                    edgecolor="none",
+                    label=f"{int(class_id)}: {name}",
+                )
+            )
+
+    elif color_mode == "subject":
+        cmap = plt.get_cmap("tab10", n_subjs)
+        subj_colors = {subj_id: cmap(i) for i, subj_id in enumerate(subj_ids)}
+        legend_handles = [
+            Patch(
+                facecolor=subj_colors[subj_id],
+                edgecolor="none",
+                label=f"subj{subj_id}",
+            )
+            for subj_id in subj_ids
+        ]
+
+  
+    for ax, cond in zip(axes, CONDITION_BASE):
+        x = eeg_data[cond]["x"]
+        n_split = x.shape[0]
+
+        z = fit_tsne(x, seed, n_components=2)
+        if z is None:
+            ax.text(
+                0.5, 0.5, f"t-SNE failed in {cond}", ha="center", va="center"
+            )
+            ax.set_title(
+                f"{CONDITION_NAMES[cond]} (n={n_split})",
+                fontsize=subplot_title_fontsize,
+            )
+            ax.set_xticks([])
+            ax.set_yticks([])
+            continue
+
+        # Generate sample-level color array based on selected color_mode
+        if color_mode == "subject":
+            y_sub = eeg_data[cond]["y_subject"]
+            point_colors = [subj_colors[int(s)] for s in y_sub]
+        #else:  # event
+            #y_evt = eeg_data[cond]["y_event"]
+            #point_colors = [cmap(code_to_idx[int(e)]) for e in y_evt]
+
+        ax.scatter(
+            z[:, 0],
+            z[:, 1],
+            c=point_colors,
+            s=14,
+            alpha=0.8,
+            edgecolors="none",
+        )
+        ax.set_title(
+            f"{CONDITION_NAMES[cond]} (n={n_split})",
+            fontsize=subplot_title_fontsize,
+        )
+        ax.set_xlabel("t-SNE 1", fontsize=axis_label_fontsize)
+        ax.set_ylabel("t-SNE 2", fontsize=axis_label_fontsize)
+        ax.grid(True, alpha=0.25)
+
+    if color_mode == "event" and len(legend_handles) > 20:
+        # place legend outside to the right in multiple columns
+        fig.legend(
+            handles=legend_handles,
+            loc="center left",
+            bbox_to_anchor=(1.01, 0.5),
+            ncol=3,  # columns
+            fontsize=legend_fontsize - 3,
+            frameon=False,
+        )
+        bottom_pad = 0.05
+    else:
+        ncol, bottom_pad = _build_legend_layout(len(legend_handles))
+        fig.legend(
+            handles=legend_handles,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.01),
+            ncol=ncol,
+            fontsize=legend_fontsize,
+            frameon=False,
+        )
+
+    fig.suptitle(title, fontsize=title_fontsize)
+    fig.tight_layout(rect=[0, bottom_pad, 1, 0.95])
+    fig.savefig(f"{title}.png", dpi=220, bbox_inches="tight")
+
+    return fig, axes
+
+def plot_tsne_(
+    eeg_data,
+    title: str,
+    seed: int,
+    title_fontsize: int = 18,
+    legend_fontsize: int = 15,
+    subplot_title_fontsize: int = 15,
+    axis_label_fontsize: int = 11,
+    events_ids = None,
+    color_mode: str = "subject"  # or "event"
+):
+    fig, axes = plt.subplots(1, 3, figsize=(20, 7))
+
+    subj_ids = sorted({int(v) for cond in CONDITION_BASE for v in eeg_data[cond]["y_subject"]})
+    n_subjs = len(subj_ids)
+    id_to_name = load_event_names('events_codes.csv') if events_ids is None else events_ids
+    subj_to_idx = {subj_id: i for i, subj_id in enumerate(subj_ids)}
+
+    if color_mode == "event":
+        cmap = make_distinct_colormap(len(events_ids))
+        norm = BoundaryNorm(np.arange(-0.5, max(1, len(events_ids)) + 0.5, 1.0), cmap.N)
+        legend_handles = []
+        for idx, class_id in enumerate(events_ids):
+            name = id_to_name.get(int(class_id), str(int(class_id))) if id_to_name else str(int(class_id))
+            legend_handles.append(Patch(facecolor=cmap(idx), edgecolor="none", label=f"{int(class_id)}: {name}"))
+    elif color_mode == "subject":
+        cmap = plt.get_cmap("tab10", n_subjs)
+        colors = {subj_id: cmap(i) for i, subj_id in enumerate(subj_ids)}
+        legend_handles = [
+        Patch(facecolor=colors[subj_id], edgecolor="none", label=f"subj{subj_id}")
+                for subj_id in subj_ids
+            ]
+
+
+        for ax, cond in zip(axes, CONDITION_BASE):
+            x = eeg_data[cond]["x"]
+            n_split = x.shape[0]
+
+            z = fit_tsne(x, seed, n_components=2)
+            if z is None:
+                ax.text(0.5, 0.5, f"t-SNE failed in {cond}", ha="center", va="center")
+                ax.set_title(f"{CONDITION_NAMES[cond]} (n={n_split})", fontsize=subplot_title_fontsize)
+                ax.set_xticks([])
+                ax.set_yticks([])
+                continue
+
+
+            ax.scatter(
+                z[:, 0],
+                z[:, 1],
+                c=colors,  # Pass precalculated RGB/RGBA matrix directly
+                s=14,
+                alpha=0.8,
+                edgecolors="none",
+            )
+            ax.set_title(f"{CONDITION_NAMES[cond]} (n={n_split})", fontsize=subplot_title_fontsize)
+            ax.set_xlabel("t-SNE 1", fontsize=axis_label_fontsize)
+            ax.set_ylabel("t-SNE 2", fontsize=axis_label_fontsize)
+            ax.grid(True, alpha=0.25)
+
+        ncol, bottom_pad = _build_legend_layout(len(legend_handles))
+        fig.legend(
+            handles=legend_handles,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.01),
+            ncol=ncol,
+            fontsize=legend_fontsize,
+            frameon=False,
+        )
+        fig.suptitle(title, fontsize=title_fontsize)
+        fig.tight_layout(rect=[0, bottom_pad, 1, 1])
+        fig.savefig(f"{title}.png", dpi=220, bbox_inches="tight")
+    
+    return fig, axes
+
 
 def main():
-    raw_all, markers_all, code_to_name = load_data(subjects, data_dir=data_dir)
+    raw_all, markers_all, code_to_name = load_data(subjects, data_dir=DATA_DIR)
     raw_filt = {
         s: raw_all[s].copy().filter(l_freq=COND3_FILTER_BAND[0], h_freq=COND3_FILTER_BAND[1], picks='eeg')
         for s in raw_all
@@ -146,7 +427,17 @@ def main():
     epochs_300_all = epochs_all[3]  # Attempted speech
     epochs_300_allfilt = epochs_allfilt[3]  # Attempted speech filtered
    
-    print(f"\nSuccessfully loaded and epoched data for {len(raw_all)} subjects")
+    print(f"\nLoaded and epoched data for {len(raw_all)} subjects")
+
+    events=load_event_names('events_codes.csv')
+    formatted_tsne_data = prepare_tsne_data(epochs_all)
+    plot_tsne(
+        eeg_data=formatted_tsne_data,
+        title="Raw EEG data (projected with t-SNE) across conditions",
+        seed=3,
+        events_ids=events,
+        color_mode="subject",  # "event"
+    )
 
     # PLOT EVOKED RESPONSES AND TOPOPLOTS
     # Time points for the topoplots

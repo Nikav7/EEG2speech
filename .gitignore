@@ -39,3 +39,4 @@ wav2vec2_finetuned/
 extended_infomaxcomps025-120Hz/
 eegdata_250sr_new/
 toignore/
+plots/

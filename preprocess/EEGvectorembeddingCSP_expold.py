@@ -426,8 +426,8 @@ def _match_attempted_to_labels(
         src_idx = np.flatnonzero(y_attempted_dec == cls)
         if src_idx.size == 0:
              #print(f"Attempted condition has 0 samples for class {cls}.")
-             #continue
-            raise ValueError(f"Attempted condition has 0 samples for class {cls}.")
+             continue
+            #raise ValueError(f"Attempted condition has 0 samples for class {cls}.")
 
         cyc = src_idx[np.arange(tgt_idx.size) % src_idx.size]
         x_matched[tgt_idx] = x_attempted[cyc]
@@ -450,7 +450,7 @@ def _augment_split_to_target(
     x_im_aug = [x_im]
     x_at_aug = [x_sp]
     y_aug_im = [y_dec_im]
-    y_aug_at = [y_dec_at]
+    y_aug_at = [y_dec_im] #y_dec_at
 
     for cls in range(1, num_class + 1):
         cls_idx_im = np.flatnonzero(y_dec_im == cls)
@@ -587,9 +587,9 @@ def run_vector_embedding_pipeline(
             raise ValueError(
                 f"Imagined labels contain {im_unique.size} classes, expected {label_num_class}."
             )
-    if not np.array_equal(im_unique, at_unique) or not np.array_equal(im_unique, li_unique):
+    if not np.array_equal(im_unique, at_unique):
         raise ValueError(
-            "Imagined/attempted/listening label sets differ; cannot build a consistent 74-class mapping."
+            "Imagined/attempted label sets differ; cannot build a consistent 74-class mapping."
         )
 
 
@@ -613,14 +613,12 @@ def run_vector_embedding_pipeline(
             val_ratio=val_ratio,
             test_ratio=test_ratio,
         )
-    # Listening is not augmented; split with class coverage to keep ≥1 sample per class in val.
-    listening_split = make_split_indices(
-        y_dec=y_li_dec,
-        num_class=label_num_class,
+    # Listening is not augmented; optional split with class coverage to keep ≥1 sample per class in val.
+    listening_split = make_simple_split_indices(
+        x_listening.shape[0],
         seed=seed,
         val_ratio=val_ratio,
         test_ratio=test_ratio,
-        enforce_val_class_coverage=False,
     )
 
 
@@ -640,11 +638,28 @@ def run_vector_embedding_pipeline(
     y_ts_li = y_li_dec[listening_split.test]
     y_val_li = y_li_dec[listening_split.val]
 
-    #x_tr_at = x_attempted[attempted_split.train]
-    #y_tr_at = y_at_dec[attempted_split.train]
+    
+    attempted_split = make_split_indices(
+                 y_dec=y_at_dec,
+                 num_class=label_num_class,
+                 seed=seed,
+                 val_ratio=val_ratio,
+                 test_ratio=test_ratio,
+                enforce_val_class_coverage=enforce_val_class_coverage,
+          )
+    # #independent split so no attempted sample leaks across splits via cycling.
+    attempted_originalX = x_attempted[attempted_split.train]
+    attempted_originalY = y_at_dec[attempted_split.train]
+    x_ts_at = x_attempted[attempted_split.test]
+    y_ts_at = y_at_dec[attempted_split.test]
+    x_val_at = x_attempted[attempted_split.val]
+    y_val_at = y_at_dec[attempted_split.val]
+    x_pre_at_train = attempted_originalX
+    y_pre_at_train = attempted_originalY
 
-    # Train: keep matching so imagined and attempted are class-aligned for CSP and augmentation.
-    attempted_originalX, attempted_originalY, x_tr_at, y_tr_at = _match_attempted_to_labels(x_attempted, y_at_dec, y_tr_im, label_num_class)# Train: match attempted to imagined labels
+
+    # Train: optional matching so imagined and attempted are class-aligned for CSP and augmentation.
+    _,_, x_tr_at, y_tr_at = _match_attempted_to_labels(attempted_originalX, attempted_originalY, y_tr_im, label_num_class)# Train: match attempted to imagined labels
     
     # # match attempted to imagined test split labels
     # _, _, x_ts_at, y_ts_at = _match_attempted_to_labels(
@@ -656,34 +671,21 @@ def run_vector_embedding_pipeline(
     #      x_attempted, y_at_dec, y_val_im, label_num_class
     # )
 
-    attempted_split = make_split_indices(
-                 y_dec=y_at_dec,
-                 num_class=label_num_class,
-                 seed=seed,
-                 val_ratio=val_ratio,
-                 test_ratio=test_ratio,
-                enforce_val_class_coverage=enforce_val_class_coverage,
-          )
-    # #independent split so no attempted sample leaks across splits via cycling.
-    # #x_tr_at = x_attempted[attempted_split.train]
-    # #y_tr_at = y_at_dec[attempted_split.train]
-    x_ts_at = x_attempted[attempted_split.test]
-    y_ts_at = y_at_dec[attempted_split.test]
-    x_val_at = x_attempted[attempted_split.val]
-    y_val_at = y_at_dec[attempted_split.val]
-    
+    #attempted_originalX, attempted_originalY = x_tr_at.copy(), y_tr_at.copy()
+    #_, _, x_tr_at, y_tr_at = _match_attempted_to_labels(x_attempted, y_tr_at, y_tr_im, label_num_class)
+
 
     # Save pre-augmentation labels for per-subject stats export.
     y_pre_im_train = y_tr_im.copy()
     y_pre_im_val = y_val_im.copy()
     y_pre_im_test = y_ts_im.copy()
-    y_pre_at_train = attempted_originalY.copy()
+    #y_pre_at_train = attempted_originalY
     y_pre_at_val = y_val_at.copy()
     y_pre_at_test = y_ts_at.copy()
     x_pre_im_train = x_tr_im.copy()
     x_pre_im_val = x_val_im.copy()
     x_pre_im_test = x_ts_im.copy()
-    x_pre_at_train = attempted_originalX.copy()
+    #x_pre_at_train = attempted_originalX
     x_pre_at_val = x_val_at.copy()
     x_pre_at_test = x_ts_at.copy()
     x_pre_li_train = x_tr_li.copy()
@@ -692,13 +694,13 @@ def run_vector_embedding_pipeline(
 
 
     print("\nSplit sizes before augmentation:")
-    print(f"  train: imagined={x_tr_im.shape[0]}, attempted={attempted_originalX.shape[0]}, listening={attempted_originalY.shape[0]}")
+    print(f"  train: imagined={x_tr_im.shape[0]}, attempted={attempted_originalX.shape[0]}, listening={x_tr_li.shape[0]}")
     print(f"  val:   imagined={x_val_im.shape[0]}, attempted={x_val_at.shape[0]}, listening={x_val_li.shape[0]}")
     print(f"  test:  imagined={x_ts_im.shape[0]}, attempted={x_ts_at.shape[0]}, listening={x_ts_li.shape[0]}")
 
     if use_augmentation:
         rng = np.random.RandomState(seed)
-        x_tr_im, x_tr_at, y_train_dec, y_tr_at = _augment_split_to_target(
+        x_tr_im, x_tr_at, y_tr_im, y_tr_at = _augment_split_to_target(
             x_tr_im,
             x_tr_at,
             y_tr_im,
@@ -717,21 +719,27 @@ def run_vector_embedding_pipeline(
         #     rng=rng,
         # )
         
-       
-        y_test_dec = y_ts_im
 
         # double imagined val only for subsequent gan training 
         # #attempted val uses its own independent split for csp training.
+        # im_noise = rng.normal(0.0, augment_noise_std, size=x_val_im.shape)
+        # x_val_im = np.concatenate([x_val_im, (x_val_im + im_noise).astype(x_val_im.dtype, copy=False)], axis=0)
+        # y_val_dec = np.concatenate([y_val_im, y_val_im], axis=0)
+
+        # y_train_dec = y_tr_im
+        # y_test_dec = y_ts_im
+        # Double imagined val only for subsequent GAN training
         im_noise = rng.normal(0.0, augment_noise_std, size=x_val_im.shape)
         x_val_im = np.concatenate([x_val_im, (x_val_im + im_noise).astype(x_val_im.dtype, copy=False)], axis=0)
-        y_val_dec = np.concatenate([y_val_im, y_val_im], axis=0)
-    else:
+        y_val_im = np.concatenate([y_val_im, y_val_im], axis=0)  # Fixed: update y_val_im directly
+
         y_train_dec = y_tr_im
         y_test_dec = y_ts_im
         y_val_dec = y_val_im
-        # Keep attempted labels explicit and aligned in non-augmented mode.
-        y_tr_at = y_train_dec.copy()
-        y_val_at = y_val_dec.copy()
+    else:
+        y_tr_im = y_tr_im
+        y_test_dec = y_ts_im
+        y_val_dec = y_val_im
 
     print("Split sizes after augmentation:")
     print(f"  train: imagined={x_tr_im.shape[0]}, attempted={x_tr_at.shape[0]}, listening={x_tr_li.shape[0]}")
@@ -740,7 +748,7 @@ def run_vector_embedding_pipeline(
 
     # Fit shared filters on TRAIN only, using imagined + attempted, with optional listening.
     x_tr_sources = [x_tr_im, x_tr_at]
-    y_tr_sources = [y_train_dec, y_tr_at]
+    y_tr_sources = [y_tr_im, y_tr_at]
     if include_listening_in_csp_train:
         x_tr_sources.append(x_tr_li)
         y_tr_sources.append(y_tr_li)
@@ -788,22 +796,25 @@ def run_vector_embedding_pipeline(
 
     out = {
 
-        # Label arrays for augmented data
-        "y_train_dec": y_train_dec,
-        "y_test_dec": y_test_dec,
-        "y_val_dec": y_val_dec,
-        "y_listening_train_dec": y_tr_li,
-        "y_listening_test_dec": y_ts_li,
-        "y_listening_val_dec": y_val_li,
+        # Label arrays for augmented and non augmented data
         "y_pre_imagined_train_dec": y_pre_im_train,
         "y_pre_imagined_test_dec": y_pre_im_test,
         "y_pre_imagined_val_dec": y_pre_im_val,
         "y_pre_attempted_train_dec": y_pre_at_train,
         "y_pre_attempted_test_dec": y_pre_at_test,
         "y_pre_attempted_val_dec": y_pre_at_val,
+        "y_pre_listening_train_dec": y_tr_li,
+        "y_pre_listening_test_dec": y_ts_li,
+        "y_pre_listening_val_dec": y_val_li,
+        "y_post_imagined_train_dec": y_train_dec,
+        "y_post_imagined_test_dec": y_test_dec,
+        "y_post_imagined_val_dec": y_val_dec,
         "y_post_attempted_train_dec": y_tr_at,
         "y_post_attempted_test_dec": y_ts_at,
         "y_post_attempted_val_dec": y_val_at,
+        
+       
+        
 
         # CSP-transformed post-augmentation (log-variance features)
         "post_imagined_train": _segment_variance_log(tr_im_ts, n_sess=n_sess),
@@ -927,20 +938,17 @@ def prepare_vector_embedding_inputs(
     x_attempted = np.concatenate(x_at_list, axis=0)
     y_attempted = np.concatenate(y_at_list, axis=0)
 
-    common_classes = np.intersect1d(
-        np.intersect1d(np.unique(y_imagined), np.unique(y_attempted)),
-        np.unique(y_listening),
-    )
+    common_classes = np.intersect1d(np.unique(y_imagined), np.unique(y_attempted))
     if common_classes.size == 0:
-        raise ValueError("No common class labels across imagined, attempted, and listening conditions.")
+        raise ValueError("No common class labels across imagined and attempted conditions.")
 
     im_mask = np.isin(y_imagined, common_classes)
-    li_mask = np.isin(y_listening, common_classes)
+    #li_mask = np.isin(y_listening, common_classes)
     at_mask = np.isin(y_attempted, common_classes)
     x_imagined = x_imagined[im_mask]
     y_imagined = y_imagined[im_mask]
-    x_listening = x_listening[li_mask]
-    y_listening = y_listening[li_mask]
+    #x_listening = x_listening[li_mask]
+    #y_listening = y_listening[li_mask]
     x_attempted = x_attempted[at_mask]
     y_attempted = y_attempted[at_mask]
 
@@ -955,7 +963,7 @@ def prepare_vector_embedding_inputs(
     else:
         class_map = {int(cls): idx + 1 for idx, cls in enumerate(np.sort(common_classes))}
     y_imagined = np.asarray([class_map[int(v)] for v in y_imagined], dtype=np.int32)
-    y_listening = np.asarray([class_map[int(v)] for v in y_listening], dtype=np.int32)
+    #y_listening = np.asarray([class_map[int(v)] for v in y_listening], dtype=np.int32)
     y_attempted = np.asarray([class_map[int(v)] for v in y_attempted], dtype=np.int32)
 
     return x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening, common_classes.astype(np.int32, copy=True), class_map
@@ -977,12 +985,12 @@ def save_raw_splits_to_csv(
     """
     subj_dir = os.path.join(output_dir, f"subj{subject_id}")
     cond_dir = os.path.join(subj_dir, condition_name)
-    label_prefix = condition_prefix if label_prefix is None else label_prefix
+    label_prefix = label_prefix
     original_labels = np.asarray(original_labels).astype(np.int32)
     split_map = {
-        "train": (f"raw_{condition_prefix}_train", f"y_{label_prefix}_train_dec" if label_prefix not in ["imagined", "attempted"] else "y_train_dec"),
-        "val": (f"raw_{condition_prefix}_val", f"y_{label_prefix}_val_dec" if label_prefix not in ["imagined", "attempted"] else "y_val_dec"),
-        "test": (f"raw_{condition_prefix}_test", f"y_{label_prefix}_test_dec" if label_prefix not in ["imagined", "attempted"] else "y_test_dec"),
+        "train": (f"raw_{label_prefix}_{condition_prefix}_train", f"y_{label_prefix}_{condition_prefix}_train_dec"),
+        "val": (f"raw_{label_prefix}_{condition_prefix}_val", f"y_{label_prefix}_{condition_prefix}_val_dec"),
+        "test": (f"raw_{label_prefix}_{condition_prefix}_test", f"y_{label_prefix}_{condition_prefix}_test_dec"),
     }
 
     for split_name, (x_key, y_key) in split_map.items():
@@ -1157,12 +1165,11 @@ def save_splits_to_csv(
     """
     subj_dir = os.path.join(output_dir, f"subj{subject_id}")
     cond_dir = os.path.join(subj_dir, condition_name)
-    label_prefix = condition_prefix if label_prefix is None else label_prefix
     original_labels = np.asarray(original_labels).astype(np.int32)
     split_map = {
-        "train": (f"{condition_prefix}_train", f"y_{label_prefix}_train_dec" if label_prefix != "imagined" and label_prefix != "attempted" else "y_train_dec"),
-        "val": (f"{condition_prefix}_val", f"y_{label_prefix}_val_dec" if label_prefix != "imagined" and label_prefix != "attempted" else "y_val_dec"),
-        "test": (f"{condition_prefix}_test", f"y_{label_prefix}_test_dec" if label_prefix != "imagined" and label_prefix != "attempted" else "y_test_dec"),
+        "train": (f"{condition_prefix}_train", f"y_{condition_prefix}_train_dec" ),
+        "val": (f"{condition_prefix}_val", f"y_{condition_prefix}_val_dec"),
+        "test": (f"{condition_prefix}_test", f"y_{condition_prefix}_test_dec"),
     }
 
     for split_name, (x_key, y_key) in split_map.items():
@@ -1197,6 +1204,63 @@ def save_splits_to_csv(
             f"{x_split.shape[0]} files in {split_dir}"
         )
 
+def save_raw_splits_to_csv_(
+    out: Dict[str, np.ndarray],
+    output_dir: str,
+    subject_id: int,
+    condition_name: str,
+    condition_prefix: str,
+    original_labels: np.ndarray,
+    label_prefix: str = "pre",
+) -> None:
+    """Save one CSV per epoch (raw time-series) under output_dir/subj#/condition/train|val|test."""
+    subj_dir = os.path.join(output_dir, f"subj{subject_id}")
+    cond_dir = os.path.join(subj_dir, condition_name)
+    original_labels = np.asarray(original_labels).astype(np.int32)
+    
+    split_map = {
+        "train": (f"raw_{label_prefix}_{condition_prefix}_train", f"y_{label_prefix}_{condition_prefix}_train_dec"),
+        "val": (f"raw_{label_prefix}_{condition_prefix}_val", f"y_{label_prefix}_{condition_prefix}_val_dec"),
+        "test": (f"raw_{label_prefix}_{condition_prefix}_test", f"y_{label_prefix}_{condition_prefix}_test_dec"),
+    }
+
+    for split_name, (x_key, y_key) in split_map.items():
+        if x_key not in out or y_key not in out:
+            print(f"Warning: skipping {condition_prefix}/{split_name} - missing keys {x_key}, {y_key}")
+            continue
+        
+        x_split = out[x_key]
+        y_split = out[y_key]
+
+        if x_split.ndim != 3:
+            raise ValueError(f"Expected 3D split for {condition_prefix}/{split_name}, got {x_split.shape}")
+        if x_split.shape[0] != y_split.shape[0]:
+            raise ValueError(
+                f"Mismatch between features and labels for {split_name}: "
+                f"{x_split.shape[0]} vs {y_split.shape[0]}"
+            )
+
+        split_dir = os.path.join(cond_dir, split_name)
+        os.makedirs(split_dir, exist_ok=True)
+
+        for i in range(x_split.shape[0]):
+            remapped_label = int(y_split[i])
+            
+            # Map 1-based remapped label index back to original label
+            if 1 <= remapped_label <= original_labels.size:
+                label = int(original_labels[remapped_label - 1])
+            else:
+                label = remapped_label  # Fallback if already original class ID
+                
+            epoch_mat = x_split[i]  # shape: (n_channels, n_times)
+            csv_name = f"label{label:03d}_epoch{i:04d}.csv"
+            csv_path = os.path.join(split_dir, csv_name)
+            pd.DataFrame(epoch_mat).to_csv(csv_path, index=False, header=False)
+
+        print(
+            f"Saved {condition_name} {split_name} raw epoch CSVs: "
+            f"{x_split.shape[0]} files in {split_dir}"
+        )
 
 def save_subject_augmentation_stats_csv(
     output_dir: str,
@@ -1214,19 +1278,19 @@ def save_subject_augmentation_stats_csv(
     split_keys = {
         "train": {
             "imagined_before": "y_pre_imagined_train_dec",
-            "imagined_after": "y_train_dec",
+            "imagined_after": "y_post_imagined_train_dec",
             "attempted_before": "y_pre_attempted_train_dec",
             "attempted_after": "y_post_attempted_train_dec",
         },
         "val": {
             "imagined_before": "y_pre_imagined_val_dec",
-            "imagined_after": "y_val_dec",
+            "imagined_after": "y_post_imagined_val_dec",
             "attempted_before": "y_pre_attempted_val_dec",
             "attempted_after": "y_post_attempted_val_dec",
         },
         "test": {
             "imagined_before": "y_pre_imagined_test_dec",
-            "imagined_after": "y_test_dec",
+            "imagined_after": "y_post_imagined_test_dec",
             "attempted_before": "y_pre_attempted_test_dec",
             "attempted_after": "y_post_attempted_test_dec",
         },
@@ -1275,7 +1339,7 @@ def parse_args() -> argparse.Namespace:
         "--subjects",
         nargs="+",
         type=int,
-        default=[15, 16, 17, 18, 19],
+        default=[16, 17, 18, 19],
         help="Subject IDs to process, e.g. --subjects 16 17 18 19",
     )
     parser.add_argument(
@@ -1426,10 +1490,12 @@ def main() -> None:
         print(f"  x_imagined: {x_imagined.shape}, x_attempted: {x_attempted.shape}, x_listening: {x_listening.shape}")
 
         # Map global CSP reference classes to remapped IDs using the shared global class map.
-        csp_class_ids = np.array(
-            [global_class_map[int(c)] for c in csp_reference_original_classes], dtype=np.int32
-        )
-        print(f"  CSP class IDs (remapped) for this subject: {csp_class_ids}")
+        # csp_class_ids = np.array(
+        #     [global_class_map[int(c)] for c in csp_reference_original_classes], dtype=np.int32
+        # )
+        # print(f"  CSP class IDs (remapped) for this subject: {csp_class_ids}")
+
+        csp_class_ids = np.arange(1, 14)
 
         # Record per-subject CSP class mapping.
         for orig_cls, remapped_id in zip(csp_reference_original_classes.tolist(), csp_class_ids.tolist()):
@@ -1465,63 +1531,63 @@ def main() -> None:
         # raw pre-augmentation data (no augmentation, no CSP)
         print(f"\n--- pre-augmentation ---")
         pre_aug_imagined_out = {
-            "raw_imagined_train": out["raw_pre_imagined_train"],
-            "raw_imagined_test": out["raw_pre_imagined_test"],
-            "raw_imagined_val": out["raw_pre_imagined_val"],
-            "y_train_dec": out["y_pre_imagined_train_dec"],
-            "y_test_dec": out["y_pre_imagined_test_dec"],
-            "y_val_dec": out["y_pre_imagined_val_dec"],
+            "raw_pre_imagined_train": out["raw_pre_imagined_train"],
+            "raw_pre_imagined_test": out["raw_pre_imagined_test"],
+            "raw_pre_imagined_val": out["raw_pre_imagined_val"],
+            "y_pre_imagined_train_dec": out["y_pre_imagined_train_dec"],
+            "y_pre_imagined_test_dec": out["y_pre_imagined_test_dec"],
+            "y_pre_imagined_val_dec": out["y_pre_imagined_val_dec"],
         }
         pre_aug_attempted_out = {
-            "raw_attempted_train": out["raw_pre_attempted_train"],
-            "raw_attempted_test": out["raw_pre_attempted_test"],
-            "raw_attempted_val": out["raw_pre_attempted_val"],
-            "y_train_dec": out["y_pre_attempted_train_dec"],
-            "y_test_dec": out["y_pre_attempted_test_dec"],
-            "y_val_dec": out["y_pre_attempted_val_dec"],
+            "raw_pre_attempted_train": out["raw_pre_attempted_train"],
+            "raw_pre_attempted_test": out["raw_pre_attempted_test"],
+            "raw_pre_attempted_val": out["raw_pre_attempted_val"],
+            "y_pre_attempted_train_dec": out["y_pre_attempted_train_dec"],
+            "y_pre_attempted_test_dec": out["y_pre_attempted_test_dec"],
+            "y_pre_attempted_val_dec": out["y_pre_attempted_val_dec"],
         }
         pre_aug_listening_out = {
-            "raw_listening_train": out["raw_pre_listening_train"],
-            "raw_listening_test": out["raw_pre_listening_test"],
-            "raw_listening_val": out["raw_pre_listening_val"],
-            "y_listening_train_dec": out["y_listening_train_dec"],
-            "y_listening_test_dec": out["y_listening_test_dec"],
-            "y_listening_val_dec": out["y_listening_val_dec"],
+            "raw_pre_listening_train": out["raw_pre_listening_train"],
+            "raw_pre_listening_test": out["raw_pre_listening_test"],
+            "raw_pre_listening_val": out["raw_pre_listening_val"],
+            "y_pre_listening_train_dec": out["y_pre_listening_train_dec"],
+            "y_pre_listening_test_dec": out["y_pre_listening_test_dec"],
+            "y_pre_listening_val_dec": out["y_pre_listening_val_dec"],
         }
         
-        save_raw_splits_to_csv(pre_aug_imagined_out, raw_pre_aug_dir, subject_id, "imagined_speech", "imagined", common_classes)
-        save_raw_splits_to_csv(pre_aug_attempted_out, raw_pre_aug_dir, subject_id, "attempted_speech", "attempted", common_classes)
-        save_raw_splits_to_csv(pre_aug_listening_out, raw_pre_aug_dir, subject_id, "listening", "listening", common_classes, label_prefix="listening")
+        save_raw_splits_to_csv_(pre_aug_imagined_out, raw_pre_aug_dir, subject_id, "imagined_speech", "imagined", common_classes, label_prefix="pre")
+        save_raw_splits_to_csv_(pre_aug_attempted_out, raw_pre_aug_dir, subject_id, "attempted_speech", "attempted", common_classes, label_prefix="pre")
+        save_raw_splits_to_csv_(pre_aug_listening_out, raw_pre_aug_dir, subject_id, "listening", "listening", common_classes, label_prefix="pre")
 
         # raw post-augmentation data (no CSP)
         post_aug_imagined_out = {
-            "raw_imagined_train": out["raw_post_imagined_train"],
-            "raw_imagined_test": out["raw_post_imagined_test"],
-            "raw_imagined_val": out["raw_post_imagined_val"],
-            "y_train_dec": out["y_train_dec"],
-            "y_test_dec": out["y_test_dec"],
-            "y_val_dec": out["y_val_dec"],
+            "raw_post_imagined_train": out["raw_post_imagined_train"],
+            "raw_post_imagined_test": out["raw_post_imagined_test"],
+            "raw_post_imagined_val": out["raw_post_imagined_val"],
+            "y_post_imagined_train_dec": out["y_post_imagined_train_dec"],
+            "y_post_imagined_test_dec": out["y_post_imagined_test_dec"],
+            "y_post_imagined_val_dec": out["y_post_imagined_val_dec"],
         }
         post_aug_attempted_out = {
-            "raw_attempted_train": out["raw_post_attempted_train"],
-            "raw_attempted_test": out["raw_post_attempted_test"],
-            "raw_attempted_val": out["raw_post_attempted_val"],
-            "y_train_dec": out["y_post_attempted_train_dec"],
-            "y_test_dec": out["y_post_attempted_test_dec"],
-            "y_val_dec": out["y_post_attempted_val_dec"],
+            "raw_post_attempted_train": out["raw_post_attempted_train"],
+            "raw_post_attempted_test": out["raw_post_attempted_test"],
+            "raw_post_attempted_val": out["raw_post_attempted_val"],
+            "y_post_attempted_train_dec": out["y_post_attempted_train_dec"],
+            "y_post_attempted_test_dec": out["y_post_attempted_test_dec"],
+            "y_post_attempted_val_dec": out["y_post_attempted_val_dec"],
         }
         post_aug_listening_out = {
-            "raw_listening_train": out["raw_post_listening_train"],
-            "raw_listening_test": out["raw_post_listening_test"],
-            "raw_listening_val": out["raw_post_listening_val"],
-            "y_listening_train_dec": out["y_listening_train_dec"],
-            "y_listening_test_dec": out["y_listening_test_dec"],
-            "y_listening_val_dec": out["y_listening_val_dec"],
+            "raw_post_listening_train": out["raw_post_listening_train"],
+            "raw_post_listening_test": out["raw_post_listening_test"],
+            "raw_post_listening_val": out["raw_post_listening_val"],
+            "y_post_listening_train_dec": out["y_pre_listening_train_dec"],
+            "y_post_listening_test_dec": out["y_pre_listening_test_dec"],
+            "y_post_listening_val_dec": out["y_pre_listening_val_dec"],
         }
         
-        save_raw_splits_to_csv(post_aug_imagined_out, raw_post_aug_dir, subject_id, "imagined_speech", "imagined", common_classes)
-        save_raw_splits_to_csv(post_aug_attempted_out, raw_post_aug_dir, subject_id, "attempted_speech", "attempted", common_classes)
-        save_raw_splits_to_csv(post_aug_listening_out, raw_post_aug_dir, subject_id, "listening", "listening", common_classes, label_prefix="listening")
+        save_raw_splits_to_csv_(post_aug_imagined_out, raw_post_aug_dir, subject_id, "imagined_speech", "imagined", common_classes, label_prefix="post")
+        save_raw_splits_to_csv_(post_aug_attempted_out, raw_post_aug_dir, subject_id, "attempted_speech", "attempted", common_classes, label_prefix="post")
+        save_raw_splits_to_csv_(post_aug_listening_out, raw_post_aug_dir, subject_id, "listening", "listening", common_classes, label_prefix="post")
 
     
         # CSP-transformed post-augmentation data
@@ -1530,36 +1596,36 @@ def main() -> None:
             "imagined_train": out["post_imagined_train"],
             "imagined_test": out["post_imagined_test"],
             "imagined_val": out["post_imagined_val"],
-            "y_train_dec": out["y_train_dec"],
-            "y_test_dec": out["y_test_dec"],
-            "y_val_dec": out["y_val_dec"],
+            "y_imagined_train_dec": out["y_post_imagined_train_dec"],
+            "y_imagined_test_dec": out["y_post_imagined_test_dec"],
+            "y_imagined_val_dec": out["y_post_imagined_val_dec"],
         }
         csp_attempted_out = {
             "attempted_train": out["post_attempted_train"],
             "attempted_test": out["post_attempted_test"],
             "attempted_val": out["post_attempted_val"],
-            "y_train_dec": out["y_post_attempted_train_dec"],
-            "y_test_dec": out["y_post_attempted_test_dec"],
-            "y_val_dec": out["y_post_attempted_val_dec"],
+            "y_attempted_train_dec": out["y_post_attempted_train_dec"],
+            "y_attempted_test_dec": out["y_post_attempted_test_dec"],
+            "y_attempted_val_dec": out["y_post_attempted_val_dec"],
         }
         csp_listening_out = {
             "listening_train": out["post_listening_train"],
             "listening_test": out["post_listening_test"],
             "listening_val": out["post_listening_val"],
-            "y_listening_train_dec": out["y_listening_train_dec"],
-            "y_listening_test_dec": out["y_listening_test_dec"],
-            "y_listening_val_dec": out["y_listening_val_dec"],
+            "y_listening_train_dec": out["y_pre_listening_train_dec"],
+            "y_listening_test_dec": out["y_pre_listening_test_dec"],
+            "y_listening_val_dec": out["y_pre_listening_val_dec"],
         }
         
-        save_splits_to_csv(csp_imagined_out, csp_post_aug_dir, subject_id, "imagined_speech", "imagined", common_classes)
-        save_splits_to_csv(csp_attempted_out, csp_post_aug_dir, subject_id, "attempted_speech", "attempted", common_classes)
-        save_splits_to_csv(csp_listening_out, csp_post_aug_dir, subject_id, "listening", "listening", common_classes, label_prefix="listening")
+        save_splits_to_csv(csp_imagined_out, csp_post_aug_dir, subject_id, "imagined_speech", "imagined", common_classes, label_prefix="post")
+        save_splits_to_csv(csp_attempted_out, csp_post_aug_dir, subject_id, "attempted_speech", "attempted", common_classes, label_prefix="post")
+        save_splits_to_csv(csp_listening_out, csp_post_aug_dir, subject_id, "listening", "listening", common_classes, label_prefix="post")
         
         # Save augmentation statistics
         save_subject_augmentation_stats_csv(output_dir, subject_id, out, common_classes)
 
         # Accumulate cross-subject summary rows.
-        for split_name, y_key in [("train", "y_train_dec"), ("val", "y_val_dec"), ("test", "y_test_dec")]:
+        for split_name, y_key in [("train", "y_post_imagined_train_dec"), ("val", "y_post_imagined_val_dec"), ("test", "y_post_imagined_test_dec")]:
             for remapped_label, count in zip(*np.unique(out[y_key], return_counts=True)):
                 imagined_summary_rows.append({
                     "subject_id": subject_id, "split": split_name,
@@ -1573,7 +1639,7 @@ def main() -> None:
                     "original_label": int(common_classes[int(remapped_label) - 1]),
                     "remapped_label": int(remapped_label), "count": int(count),
                 })
-        for split_name, y_key in [("train", "y_listening_train_dec"), ("val", "y_listening_val_dec"), ("test", "y_listening_test_dec")]:
+        for split_name, y_key in [("train", "y_pre_listening_train_dec"), ("val", "y_pre_listening_val_dec"), ("test", "y_pre_listening_test_dec")]:
             for remapped_label, count in zip(*np.unique(out[y_key], return_counts=True)):
                 listening_summary_rows.append({
                     "subject_id": subject_id, "split": split_name,

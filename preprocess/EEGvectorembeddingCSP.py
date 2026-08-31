@@ -124,7 +124,7 @@ def to_decoded_labels(y: np.ndarray) -> np.ndarray:
 
 def make_split_indices(
     y_dec: np.ndarray,
-    num_class: int = 13,
+    num_class: int = 74,
     seed: int = 0,
     val_ratio: float = 0.2,
     test_ratio: float = 0.1,
