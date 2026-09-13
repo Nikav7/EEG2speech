@@ -274,7 +274,7 @@ def run_vector_embedding_pipeline(
     numcsp: int = 4,
     n_sess: int = 16,
     num_class: int = 13,
-    label_num_class: int = 13,
+    label_num_class: int = 74,
     seed: int = 0,
     val_ratio: float = 0.2,
     test_ratio: float = 0.1,
@@ -346,7 +346,7 @@ def run_vector_embedding_pipeline(
     x_tr_both = np.concatenate([x_tr_im, x_tr_at], axis=0)
     y_tr_both = np.concatenate([y_tr_im, y_tr_at], axis=0)
 
-    if csp_class_ids is None:
+    if csp_class_ids is None: #take the first 13 classes
         csp_class_ids = np.arange(1, num_class + 1, dtype=np.int32)
 
     y_tr_one_hot = np.zeros((len(csp_class_ids), y_tr_both.shape[0]), dtype=np.int32)
@@ -414,19 +414,20 @@ def prepare_vector_embedding_inputs(epochs_all: Dict[int, Dict[int, mne.Epochs]]
     x_listening, y_listening = np.concatenate(x_li_list, axis=0), np.concatenate(y_li_list, axis=0)
     x_attempted, y_attempted = np.concatenate(x_at_list, axis=0), np.concatenate(y_at_list, axis=0)
 
-    common_classes = np.intersect1d(np.intersect1d(np.unique(y_imagined), np.unique(y_attempted)), np.unique(y_listening))
+    common_classes = np.intersect1d(np.unique(y_imagined), np.unique(y_attempted))
+    #np.unique(y_listening) - Include listening (to do if later included in training)
+    #li_mask = np.isin(y_listening, common_classes)
     
     im_mask = np.isin(y_imagined, common_classes)
-    li_mask = np.isin(y_listening, common_classes)
     at_mask = np.isin(y_attempted, common_classes)
 
     x_imagined, y_imagined = x_imagined[im_mask], y_imagined[im_mask]
-    x_listening, y_listening = x_listening[li_mask], y_listening[li_mask]
+    #x_listening, y_listening = x_listening[li_mask], y_listening[li_mask]
     x_attempted, y_attempted = x_attempted[at_mask], y_attempted[at_mask]
 
     class_map = {int(cls): idx + 1 for idx, cls in enumerate(np.sort(common_classes))}
     y_imagined = np.asarray([class_map[int(v)] for v in y_imagined], dtype=np.int32)
-    y_listening = np.asarray([class_map[int(v)] for v in y_listening], dtype=np.int32)
+    #y_listening = np.asarray([class_map[int(v)] for v in y_listening], dtype=np.int32)
     y_attempted = np.asarray([class_map[int(v)] for v in y_attempted], dtype=np.int32)
 
     return x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening, common_classes.astype(np.int32), class_map
@@ -495,13 +496,25 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subjects", nargs="+", type=int, default=[16, 17, 18, 19])
     parser.add_argument("--eeg-data-dir", default="clean_data01-120Hz")
-    parser.add_argument("--output-dir", default="eegdata_250sr_new")
-    parser.add_argument("--non-augmented-output-dir", default="non_augmented")
+    parser.add_argument("--output-dir", default="eegdata2")
+    parser.add_argument("--rawdata-output-dir", default="eegdata2_raw")
     args = parser.parse_args()
 
-    raw_pre_aug_dir = os.path.join(args.non_augmented_output_dir, "raw_pre_augmentation")
-    raw_post_aug_dir = os.path.join(args.output_dir, "raw_post_augmentation_no_csp")
+    raw_pre_aug_dir = os.path.join(args.rawdata_output_dir, "raw_pre_augmentation")
+    raw_post_aug_dir = os.path.join(args.rawdata_output_dir, "raw_post_augmentation_no_csp")
     csp_post_aug_dir = os.path.join(args.output_dir, "csp_post_augmentation")
+
+    #CSP params and others
+    numcsp = 4
+    n_sess = 16
+    num_class_csp = 13
+    label_num_class = 74
+    n_fold = 5
+    seed = 1
+    val_ratio = 0.2
+    test_ratio = 0.1
+
+    csp_class_seed = 3
 
     all_subject_metadata = []
 
@@ -511,13 +524,19 @@ def main() -> None:
             continue
         epochs_all = extract_epochs(raw_all, markers_all)
 
-        x_im, y_im, x_at, y_at, x_li, y_li, common_classes, _ = prepare_vector_embedding_inputs(epochs_all)
+        x_im, y_im, x_at, y_at, x_li, y_li, common_classes, class_map = prepare_vector_embedding_inputs(epochs_all)
+
+        rng_ref = np.random.RandomState(csp_class_seed)
+        csp_reference_original_classes = np.sort(
+                rng_ref.choice(common_classes, size=num_class_csp, replace=False)
+            )
+        print(f"CSP reference original classes (seed={csp_class_seed}, randomly chosen {num_class_csp}): {csp_reference_original_classes}")
 
         out = run_vector_embedding_pipeline(
             x_imagined=x_im, y_imagined=y_im,
             x_attempted=x_at, y_attempted=y_at,
             x_listening=x_li, y_listening=y_li,
-            num_class=len(common_classes), label_num_class=len(common_classes)
+            num_class=num_class_csp, label_num_class=len(common_classes), seed=seed, csp_class_ids=csp_reference_original_classes,
         )
 
         # Save Raw Pre-Augmentation Splits
@@ -544,16 +563,24 @@ def main() -> None:
             "n_channels": csp_w.shape[0],
             "n_csp_filters": csp_w.shape[1],
             "n_classes": len(common_classes),
-            "classes_included": [int(c) for c in common_classes],
-            "n_train_imagined": out["raw_post_imagined_train"].shape[0],
-            "n_train_attempted": out["raw_post_attempted_train"].shape[0],
-            "n_listening_total": x_li.shape[0],
+            "classes_included": [int(c) for c in csp_reference_original_classes],
+            "n_train_imagined": out["post_imagined_train"].shape[0],
+            "n_train_attempted": out["post_attempted_train"].shape[0],
+            "n_listening_total": out["post_listening_train"].shape[0] + out["post_listening_val"].shape[0] + out["post_listening_test"].shape[0],
             "min_eigenvalue": float(np.min(csp_eigvals)),
             "max_eigenvalue": float(np.max(csp_eigvals)),
             "mean_eigenvalue": float(np.mean(csp_eigvals)),
         })
 
     # CSP aggregated metadata in the root output folder
+    csp_metameta_params = {
+            "parameter": ["numcsp", "n_sess", "num_class", "csp_class_seed", "augment_seed", "n_fold",
+                           "global_common_classes_count", "csp_reference_original_classes"],
+            "value": [numcsp, n_sess, num_class_csp, csp_class_seed, seed, n_fold,
+                      int(common_classes.size), str(csp_reference_original_classes.tolist())],
+        }
+    pd.DataFrame(csp_metameta_params).to_csv(os.path.join(csp_post_aug_dir, "csp_metametadata.csv"), index=False)
+
     save_csp_metadata(all_subject_metadata, csp_post_aug_dir)
 
 if __name__ == "__main__":

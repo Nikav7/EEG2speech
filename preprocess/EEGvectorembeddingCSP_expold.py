@@ -1429,11 +1429,9 @@ def main() -> None:
     # Save global CSP metadata: parameters and chosen reference classes.
     os.makedirs(output_dir, exist_ok=True)
     csp_meta_params = {
-        "parameter": ["numcsp", "n_sess", "num_class", "csp_class_seed", "augment_seed",
-                       "val_ratio", "test_ratio", "augment_target_per_class", "n_fold",
+        "parameter": ["numcsp", "n_sess", "num_class", "csp_class_seed", "augment_seed", "n_fold",
                        "global_common_classes_count", "csp_reference_original_classes"],
-        "value": [numcsp, n_sess, num_class, csp_class_seed, seed,
-                  0.2, 0.1, 9, n_fold,
+        "value": [numcsp, n_sess, num_class, csp_class_seed, seed, n_fold,
                   int(global_common.size), str(csp_reference_original_classes.tolist())],
     }
     pd.DataFrame(csp_meta_params).to_csv(os.path.join(output_dir, "csp_metadata.csv"), index=False)

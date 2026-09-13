@@ -2,6 +2,8 @@ __pycache__/
 .venv/
 .vscode/
 eegdata/
+eegdata2/
+eegdata2_raw/
 non_augmented/
 eegdata_250sr_minaug_1519_cspcls1-13/
 eegdata_250sr_aug9_1519/
