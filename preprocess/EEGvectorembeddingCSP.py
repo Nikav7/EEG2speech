@@ -11,12 +11,16 @@ import numpy as np
 import mne
 from mne.decoding import CSP
 import pandas as pd
+from sklearn.model_selection import StratifiedKFold
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
 
 # Data Loading Setup
 CONDITION_BASE  = {1: 100, 2: 200, 3: 400}
 CONDITION_NAMES = {1: 'Imagined speech', 2: 'Listening', 3: 'Attempted speech'}
-COND_TWIN = {1: (0.0, 2.0), 2: (0.0, 2.0), 3: (0.2, 2.2)}
+COND_TWIN = {1: (0.0, 2.0), 2: (0.0, 2.0), 3: (0.3, 2.3)}
 EVENT_SFREQ = 250
 SFREQ = 250
 
@@ -124,7 +128,6 @@ def to_decoded_labels(y: np.ndarray) -> np.ndarray:
 
 def make_split_indices(
     y_dec: np.ndarray,
-    num_class: int = 74,
     seed: int = 0,
     val_ratio: float = 0.2,
     test_ratio: float = 0.1,
@@ -173,7 +176,7 @@ def get_way_matrix(n_classes: int, way: str) -> np.ndarray:
 def proc_multicsp_train(
     x: np.ndarray,
     y_one_hot: np.ndarray,
-    n_comps: int = 2,
+    n_comps: int = 4,
     centered: bool = True,
     method: str = "all",
     way: str = "one-vs-all",
@@ -232,6 +235,20 @@ def _segment_variance_log(csp_ts: np.ndarray, n_sess: int, eps: float = 1e-12) -
     return np.log(np.maximum(var_segments, eps))
 
 
+def svm_score(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_eval: np.ndarray,
+    y_eval: np.ndarray,
+) -> float:
+    classifier = make_pipeline(
+        StandardScaler(),
+        SVC(kernel="rbf", C=1.0, gamma="scale", class_weight="balanced"),
+    )
+    classifier.fit(x_train.reshape(x_train.shape[0], -1), y_train)
+    return float(classifier.score(x_eval.reshape(x_eval.shape[0], -1), y_eval))
+
+
 def _augment_split_(
     x_data: np.ndarray,
     y_dec: np.ndarray,
@@ -282,6 +299,7 @@ def run_vector_embedding_pipeline(
     augment_noise_std: float = 1e-4,
     use_augmentation: bool = True,
     enforce_val_class_coverage: bool = True,
+    debug_csp: bool = False,
     csp_class_ids: np.ndarray | None = None,
 ) -> Dict[str, np.ndarray]:
 
@@ -291,15 +309,22 @@ def run_vector_embedding_pipeline(
 
 # Class-coverage splits for Imagined and Attempted, split Each Condition Independently
     split_im = make_split_indices(
-        y_im_dec, num_class=label_num_class, seed=seed, 
+        y_im_dec, seed=seed, 
         val_ratio=val_ratio, test_ratio=test_ratio, 
         enforce_val_class_coverage=enforce_val_class_coverage
     )
     split_at = make_split_indices(
-        y_at_dec, num_class=label_num_class, seed=seed, 
+        y_at_dec, seed=seed, 
         val_ratio=val_ratio, test_ratio=test_ratio, 
         enforce_val_class_coverage=enforce_val_class_coverage
     )
+
+
+    split_li = make_split_indices(
+            y_li_dec, seed=seed, 
+            val_ratio=val_ratio, test_ratio=test_ratio, 
+            enforce_val_class_coverage=enforce_val_class_coverage
+        )
 
     # Simple random split (70/20/10) for Listening
     # split_li = make_simple_split_indices(
@@ -308,13 +333,6 @@ def run_vector_embedding_pipeline(
     #     val_ratio=0.1,  # 0.2
     #     test_ratio=test_ratio # 0.1
     # )
-
-    split_li = make_split_indices(
-            y_li_dec, num_class=label_num_class, seed=seed, 
-            val_ratio=val_ratio, test_ratio=test_ratio, 
-            enforce_val_class_coverage=enforce_val_class_coverage
-        )
-    
 
     x_tr_im_pre, y_tr_im_pre = x_imagined[split_im.train], y_im_dec[split_im.train]
     x_val_im_pre, y_val_im_pre = x_imagined[split_im.val], y_im_dec[split_im.val]
@@ -332,12 +350,13 @@ def run_vector_embedding_pipeline(
     rng = np.random.RandomState(seed)
     if use_augmentation:
         x_tr_im, y_tr_im = _augment_split_(x_tr_im_pre, y_tr_im_pre, num_class=label_num_class, target_per_class=augment_target_per_class, noise_std=augment_noise_std, rng=rng)
+        x_val_im, y_val_im = _augment_split_(x_val_im_pre, y_val_im_pre, num_class=label_num_class, target_per_class=2, noise_std=augment_noise_std, rng=rng)
         x_tr_at, y_tr_at = _augment_split_(x_tr_at_pre, y_tr_at_pre, num_class=label_num_class, target_per_class=augment_target_per_class, noise_std=augment_noise_std, rng=rng)
     else:
         x_tr_im, y_tr_im = x_tr_im_pre, y_tr_im_pre
         x_tr_at, y_tr_at = x_tr_at_pre, y_tr_at_pre
 
-    x_val_im, y_val_im = x_val_im_pre, y_val_im_pre
+    #x_val_im, y_val_im = x_val_im_pre, y_val_im_pre
     x_ts_im, y_ts_im = x_ts_im_pre, y_ts_im_pre
     x_val_at, y_val_at = x_val_at_pre, y_val_at_pre
     x_ts_at, y_ts_at = x_ts_at_pre, y_ts_at_pre
@@ -345,19 +364,63 @@ def run_vector_embedding_pipeline(
     # Fit CSP on Combined Imagined + Attempted Training Data ONLY
     x_tr_both = np.concatenate([x_tr_im, x_tr_at], axis=0)
     y_tr_both = np.concatenate([y_tr_im, y_tr_at], axis=0)
+    x_val_both = np.concatenate([x_val_im, x_val_at], axis=0)
+    y_val_both = np.concatenate([y_val_im, y_val_at], axis=0)
 
     if csp_class_ids is None: #take the first 13 classes
         csp_class_ids = np.arange(1, num_class + 1, dtype=np.int32)
 
-    y_tr_one_hot = np.zeros((len(csp_class_ids), y_tr_both.shape[0]), dtype=np.int32)
+
+    if debug_csp:
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+        cv_fold_eigvals = []
+        cv_fold_accuracy = []
+
+        for train_idx, val_idx in cv.split(x_tr_both, y_tr_both):
+            x_fold_train = x_tr_both[train_idx]
+            y_fold_train = y_tr_both[train_idx]
+            x_fold_val = x_tr_both[val_idx]
+            y_fold_val = y_tr_both[val_idx]
+
+            y_fold_one_hot = np.zeros((len(csp_class_ids), x_fold_train.shape[0]), dtype=np.int32)
+            for i, cls in enumerate(csp_class_ids):
+                y_fold_one_hot[i, y_fold_train == cls] = 1
+
+            w_fold, fold_eigvals = proc_multicsp_train(
+                x_fold_train, y_fold_one_hot, n_comps=numcsp,
+                centered=True, method="all", way="one-vs-all",
+            )
+            cv_fold_eigvals.append(fold_eigvals)
+            cv_fold_accuracy.append(svm_score(
+                _segment_variance_log(apply_linear_derivation(x_fold_train, w_fold), n_sess),
+                y_fold_train,
+                _segment_variance_log(apply_linear_derivation(x_fold_val, w_fold), n_sess),
+                y_fold_val,
+            ))
+
+    y_tr_one_hot = np.zeros((len(csp_class_ids), x_tr_both.shape[0]), dtype=np.int32)
     for i, cls in enumerate(csp_class_ids):
         y_tr_one_hot[i, y_tr_both == cls] = 1
 
-    w, la = proc_multicsp_train(x_tr_both, y_tr_one_hot, n_comps=numcsp, centered=True, method="all", way="one-vs-all")
+    w, la = proc_multicsp_train(
+        x_tr_both, y_tr_one_hot, n_comps=numcsp,
+        centered=True, method="all", way="one-vs-all",
+    )
+
+    train_accuracies = svm_score(
+                    _segment_variance_log(apply_linear_derivation(x_tr_both, w), n_sess),
+                    y_tr_both,
+                    _segment_variance_log(apply_linear_derivation(x_val_both, w), n_sess),
+                    y_val_both,)
 
     # Feature Extraction (Applying fitted W on Imagined, Attempted, and Listening)
     return {
-        "csp_w": w, "csp_eigvals": la,
+        "csp_w": w, "csp_eigvals": la, "csp_accuracy": train_accuracies,
+        **({
+            "csp_cv_eigvals": np.stack(cv_fold_eigvals),
+            "csp_cv_fold_accuracy": np.asarray(cv_fold_accuracy),
+            "csp_cv_mean_accuracy": float(np.mean(cv_fold_accuracy)),
+        } if debug_csp else {}),
         
         # Labels
         "y_train_dec": y_tr_im, "y_val_dec": y_val_im, "y_test_dec": y_ts_im,
@@ -460,12 +523,12 @@ def save_splits_to_csv(out: Dict[str, np.ndarray], output_dir: str, subject_id: 
             pd.DataFrame(x_split[i]).to_csv(csv_path, index=False, header=False)
 
 
-def save_csp_metadata(all_subject_metadata: List[Dict[str, Any]], output_dir: str) -> None:
-    """Saves a single aggregated csp_metadata.csv for all subjects in the main output folder."""
+def save_csp_metadata(csv_name: str, metadata: List[Dict[str, Any]], output_dir: str) -> None:
+    """Save aggregated metadata to a named CSV in the main output folder."""
     os.makedirs(output_dir, exist_ok=True)
-    csv_path = os.path.join(output_dir, "csp_metadata.csv")
+    csv_path = os.path.join(output_dir, f"{csv_name}.csv")
     
-    df_meta = pd.DataFrame(all_subject_metadata)
+    df_meta = pd.DataFrame(metadata)
     df_meta.to_csv(csv_path, index=False)
 
 
@@ -486,7 +549,6 @@ def main() -> None:
     n_sess = 16
     num_class_csp = 13
     label_num_class = 74
-    n_fold = 5
     seed = 1
     val_ratio = 0.2
     test_ratio = 0.1
@@ -494,6 +556,7 @@ def main() -> None:
     csp_class_seed = 3
 
     all_subject_metadata = []
+    folds_metadata = []
 
     for subject_id in args.subjects:
         raw_all, markers_all, _ = load_data([subject_id], data_dir=args.eeg_data_dir)
@@ -507,6 +570,8 @@ def main() -> None:
         csp_reference_original_classes = np.sort(
                 rng_ref.choice(common_classes, size=num_class_csp, replace=False)
             )
+
+        #csp_reference_original_classes = np.array([1, 5, 10, 11, 13, 19, 29, 32, 35, 56, 64, 66, 74]) #rnd1classes
         print(f"CSP reference original classes (seed={csp_class_seed}, randomly selected {num_class_csp}): {csp_reference_original_classes}")
 
         out = run_vector_embedding_pipeline(
@@ -514,7 +579,7 @@ def main() -> None:
             x_attempted=x_at, y_attempted=y_at,
             x_listening=x_li, y_listening=y_li,
             num_class=num_class_csp, label_num_class=len(common_classes), seed=seed, csp_class_ids=csp_reference_original_classes,
-        )
+            debug_csp=True)
 
         # Save Raw Pre-Augmentation Splits
         # args: output_dir: str, subject_id: int, condition_name: str, condition_prefix: str, original_labels: np.ndarray,
@@ -535,6 +600,7 @@ def main() -> None:
         # Save CSP Metadata
         csp_w = out["csp_w"]
         csp_eigvals = out["csp_eigvals"]
+        svm_accuracy = out["csp_accuracy"]
         
         all_subject_metadata.append({
             "subject_id": subject_id,
@@ -548,18 +614,29 @@ def main() -> None:
             "min_eigenvalue": float(np.min(csp_eigvals)),
             "max_eigenvalue": float(np.max(csp_eigvals)),
             "mean_eigenvalue": float(np.mean(csp_eigvals)),
-        })
+            "svm_accuracy": float(svm_accuracy),
+            "mean_folds_accuracy": float(np.mean(out["csp_cv_fold_accuracy"])),
 
+            })
+        folds_metadata.append({
+            "subject_id": subject_id,
+            "fold_accuracies": str(out["csp_cv_fold_accuracy"].tolist()),
+            "mean_folds_accuracy": float(np.mean(out["csp_cv_fold_accuracy"])),
+            "min_eigenvalue": float(np.min(out["csp_cv_eigvals"])),
+            "max_eigenvalue": float(np.max(out["csp_cv_eigvals"])),
+            "mean_eigenvalue": float(np.mean(out["csp_cv_eigvals"]))
+        })
     # CSP aggregated metadata in the root output folder
     csp_metameta_params = {
-            "parameter": ["numcsp", "n_sess", "num_class", "csp_class_seed", "augment_seed", "n_fold",
+            "parameter": ["numcsp", "n_sess", "num_class", "csp_class_seed", "augment_seed",
                            "global_common_classes_count", "csp_reference_original_classes"],
-            "value": [numcsp, n_sess, num_class_csp, csp_class_seed, seed, n_fold,
+            "value": [numcsp, n_sess, num_class_csp, csp_class_seed, seed,
                       int(common_classes.size), str(csp_reference_original_classes.tolist())],
         }
     pd.DataFrame(csp_metameta_params).to_csv(os.path.join(csp_post_aug_dir, "csp_metametadata.csv"), index=False)
 
-    save_csp_metadata(all_subject_metadata, csp_post_aug_dir)
+    save_csp_metadata("csp_metadata", all_subject_metadata, csp_post_aug_dir)
+    save_csp_metadata("csp_fold_metadata", folds_metadata, csp_post_aug_dir)
 
 if __name__ == "__main__":
     main()
