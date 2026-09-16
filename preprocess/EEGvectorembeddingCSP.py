@@ -232,7 +232,7 @@ def _segment_variance_log(csp_ts: np.ndarray, n_sess: int, eps: float = 1e-12) -
     return np.log(np.maximum(var_segments, eps))
 
 
-def _augment_split_independently(
+def _augment_split_(
     x_data: np.ndarray,
     y_dec: np.ndarray,
     *,
@@ -331,8 +331,8 @@ def run_vector_embedding_pipeline(
     # Independent Augmentation for Training Sets (Listening is NOT augmented or used in CSP training)
     rng = np.random.RandomState(seed)
     if use_augmentation:
-        x_tr_im, y_tr_im = _augment_split_independently(x_tr_im_pre, y_tr_im_pre, num_class=label_num_class, target_per_class=augment_target_per_class, noise_std=augment_noise_std, rng=rng)
-        x_tr_at, y_tr_at = _augment_split_independently(x_tr_at_pre, y_tr_at_pre, num_class=label_num_class, target_per_class=augment_target_per_class, noise_std=augment_noise_std, rng=rng)
+        x_tr_im, y_tr_im = _augment_split_(x_tr_im_pre, y_tr_im_pre, num_class=label_num_class, target_per_class=augment_target_per_class, noise_std=augment_noise_std, rng=rng)
+        x_tr_at, y_tr_at = _augment_split_(x_tr_at_pre, y_tr_at_pre, num_class=label_num_class, target_per_class=augment_target_per_class, noise_std=augment_noise_std, rng=rng)
     else:
         x_tr_im, y_tr_im = x_tr_im_pre, y_tr_im_pre
         x_tr_at, y_tr_at = x_tr_at_pre, y_tr_at_pre
@@ -433,41 +433,18 @@ def prepare_vector_embedding_inputs(epochs_all: Dict[int, Dict[int, mne.Epochs]]
     return x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening, common_classes.astype(np.int32), class_map
 
 
-def save_raw_splits_to_csv(out: Dict[str, np.ndarray], output_dir: str, subject_id: int, condition_name: str, condition_prefix: str, original_labels: np.ndarray, label_prefix: str | None = None) -> None:
+
+def save_splits_to_csv(out: Dict[str, np.ndarray], output_dir: str, subject_id: int, condition_name: str, condition_prefix: str, original_labels: np.ndarray, label_prefix: str | None = None, raw: bool = False) -> None:
     subj_dir = os.path.join(output_dir, f"subj{subject_id}")
     cond_dir = os.path.join(subj_dir, condition_name)
     label_prefix = condition_prefix if label_prefix is None else label_prefix
-    
+    key_prefix = "raw_" if raw else ""
     split_map = {
-        "train": (f"raw_{condition_prefix}_train", f"y_{label_prefix}_train_dec" if label_prefix not in ["imagined", "attempted"] else "y_train_dec"),
-        "val": (f"raw_{condition_prefix}_val", f"y_{label_prefix}_val_dec" if label_prefix not in ["imagined", "attempted"] else "y_val_dec"),
-        "test": (f"raw_{condition_prefix}_test", f"y_{label_prefix}_test_dec" if label_prefix not in ["imagined", "attempted"] else "y_test_dec"),
+        "train": (f"{key_prefix}{condition_prefix}_train", f"y_{label_prefix}_train_dec"),
+        "val": (f"{key_prefix}{condition_prefix}_val", f"y_{label_prefix}_val_dec"),
+        "test": (f"{key_prefix}{condition_prefix}_test", f"y_{label_prefix}_test_dec"),
     }
 
-    for split_name, (x_key, y_key) in split_map.items():
-        if x_key not in out or y_key not in out:
-            continue
-        x_split, y_split = out[x_key], out[y_key]
-        split_dir = os.path.join(cond_dir, split_name)
-        os.makedirs(split_dir, exist_ok=True)
-
-        for i in range(x_split.shape[0]):
-            remapped_label = int(y_split[i])
-            label = int(original_labels[remapped_label - 1])
-            csv_path = os.path.join(split_dir, f"label{label:03d}_epoch{i:04d}.csv")
-            pd.DataFrame(x_split[i]).to_csv(csv_path, index=False, header=False)
-
-
-def save_splits_to_csv(out: Dict[str, np.ndarray], output_dir: str, subject_id: int, condition_name: str, condition_prefix: str, original_labels: np.ndarray, label_prefix: str | None = None) -> None:
-    subj_dir = os.path.join(output_dir, f"subj{subject_id}")
-    cond_dir = os.path.join(subj_dir, condition_name)
-    label_prefix = condition_prefix if label_prefix is None else label_prefix
-
-    split_map = {
-        "train": (f"{condition_prefix}_train", f"y_{label_prefix}_train_dec" if label_prefix not in ["imagined", "attempted"] else "y_train_dec"),
-        "val": (f"{condition_prefix}_val", f"y_{label_prefix}_val_dec" if label_prefix not in ["imagined", "attempted"] else "y_val_dec"),
-        "test": (f"{condition_prefix}_test", f"y_{label_prefix}_test_dec" if label_prefix not in ["imagined", "attempted"] else "y_test_dec"),
-    }
 
     for split_name, (x_key, y_key) in split_map.items():
         if x_key not in out or y_key not in out:
@@ -530,7 +507,7 @@ def main() -> None:
         csp_reference_original_classes = np.sort(
                 rng_ref.choice(common_classes, size=num_class_csp, replace=False)
             )
-        print(f"CSP reference original classes (seed={csp_class_seed}, randomly chosen {num_class_csp}): {csp_reference_original_classes}")
+        print(f"CSP reference original classes (seed={csp_class_seed}, randomly selected {num_class_csp}): {csp_reference_original_classes}")
 
         out = run_vector_embedding_pipeline(
             x_imagined=x_im, y_imagined=y_im,
@@ -540,19 +517,20 @@ def main() -> None:
         )
 
         # Save Raw Pre-Augmentation Splits
-        save_raw_splits_to_csv({"raw_imagined_train": out["raw_pre_imagined_train"], "raw_imagined_val": out["raw_pre_imagined_val"], "raw_imagined_test": out["raw_pre_imagined_test"], "y_train_dec": out["y_pre_imagined_train_dec"], "y_val_dec": out["y_pre_imagined_val_dec"], "y_test_dec": out["y_pre_imagined_test_dec"]}, raw_pre_aug_dir, subject_id, "imagined_speech", "imagined", common_classes)
-        save_raw_splits_to_csv({"raw_attempted_train": out["raw_pre_attempted_train"], "raw_attempted_val": out["raw_pre_attempted_val"], "raw_attempted_test": out["raw_pre_attempted_test"], "y_train_dec": out["y_pre_attempted_train_dec"], "y_val_dec": out["y_pre_attempted_val_dec"], "y_test_dec": out["y_pre_attempted_test_dec"]}, raw_pre_aug_dir, subject_id, "attempted_speech", "attempted", common_classes)
-        save_raw_splits_to_csv({"raw_listening_train": out["raw_pre_listening_train"], "raw_listening_val": out["raw_pre_listening_val"], "raw_listening_test": out["raw_pre_listening_test"], "y_listening_train_dec": out["y_listening_train_dec"], "y_listening_val_dec": out["y_listening_val_dec"], "y_listening_test_dec": out["y_listening_test_dec"]}, raw_pre_aug_dir, subject_id, "listening", "listening", common_classes, label_prefix="listening")
+        # args: output_dir: str, subject_id: int, condition_name: str, condition_prefix: str, original_labels: np.ndarray,
+        save_splits_to_csv({"raw_imagined_train": out["raw_pre_imagined_train"], "raw_imagined_val": out["raw_pre_imagined_val"], "raw_imagined_test": out["raw_pre_imagined_test"], "y_imagined_train_dec": out["y_pre_imagined_train_dec"], "y_imagined_val_dec": out["y_pre_imagined_val_dec"], "y_imagined_test_dec": out["y_pre_imagined_test_dec"]}, raw_pre_aug_dir, subject_id, "imagined_speech", "imagined", common_classes, raw=True)
+        save_splits_to_csv({"raw_attempted_train": out["raw_pre_attempted_train"], "raw_attempted_val": out["raw_pre_attempted_val"], "raw_attempted_test": out["raw_pre_attempted_test"], "y_attempted_train_dec": out["y_pre_attempted_train_dec"], "y_attempted_val_dec": out["y_pre_attempted_val_dec"], "y_attempted_test_dec": out["y_pre_attempted_test_dec"]}, raw_pre_aug_dir, subject_id, "attempted_speech", "attempted", original_labels=common_classes, raw=True)
+        save_splits_to_csv({"raw_listening_train": out["raw_pre_listening_train"], "raw_listening_val": out["raw_pre_listening_val"], "raw_listening_test": out["raw_pre_listening_test"], "y_listening_train_dec": out["y_listening_train_dec"], "y_listening_val_dec": out["y_listening_val_dec"], "y_listening_test_dec": out["y_listening_test_dec"]}, raw_pre_aug_dir, subject_id, "listening", "listening", common_classes, raw=True)
 
         # Save Raw Post-Augmentation Splits
-        save_raw_splits_to_csv({"raw_imagined_train": out["raw_post_imagined_train"], "raw_imagined_val": out["raw_post_imagined_val"], "raw_imagined_test": out["raw_post_imagined_test"], "y_train_dec": out["y_train_dec"], "y_val_dec": out["y_val_dec"], "y_test_dec": out["y_test_dec"]}, raw_post_aug_dir, subject_id, "imagined_speech", "imagined", common_classes)
-        save_raw_splits_to_csv({"raw_attempted_train": out["raw_post_attempted_train"], "raw_attempted_val": out["raw_post_attempted_val"], "raw_attempted_test": out["raw_post_attempted_test"], "y_train_dec": out["y_post_attempted_train_dec"], "y_val_dec": out["y_post_attempted_val_dec"], "y_test_dec": out["y_post_attempted_test_dec"]}, raw_post_aug_dir, subject_id, "attempted_speech", "attempted", common_classes)
-        save_raw_splits_to_csv({"raw_listening_train": out["raw_post_listening_train"], "raw_listening_val": out["raw_post_listening_val"], "raw_listening_test": out["raw_post_listening_test"], "y_listening_train_dec": out["y_listening_train_dec"], "y_listening_val_dec": out["y_listening_val_dec"], "y_listening_test_dec": out["y_listening_test_dec"]}, raw_post_aug_dir, subject_id, "listening", "listening", common_classes, label_prefix="listening")
+        save_splits_to_csv({"raw_imagined_train": out["raw_post_imagined_train"], "raw_imagined_val": out["raw_post_imagined_val"], "raw_imagined_test": out["raw_post_imagined_test"], "y_imagined_train_dec": out["y_train_dec"], "y_imagined_val_dec": out["y_val_dec"], "y_imagined_test_dec": out["y_test_dec"]}, raw_post_aug_dir, subject_id, "imagined_speech", "imagined", common_classes, raw=True)
+        save_splits_to_csv({"raw_attempted_train": out["raw_post_attempted_train"], "raw_attempted_val": out["raw_post_attempted_val"], "raw_attempted_test": out["raw_post_attempted_test"], "y_attempted_train_dec": out["y_post_attempted_train_dec"], "y_attempted_val_dec": out["y_post_attempted_val_dec"], "y_attempted_test_dec": out["y_post_attempted_test_dec"]}, raw_post_aug_dir, subject_id, "attempted_speech","attempted", common_classes, raw=True)
+        save_splits_to_csv({"raw_listening_train": out["raw_post_listening_train"], "raw_listening_val": out["raw_post_listening_val"], "raw_listening_test": out["raw_post_listening_test"], "y_listening_train_dec": out["y_listening_train_dec"], "y_listening_val_dec": out["y_listening_val_dec"], "y_listening_test_dec": out["y_listening_test_dec"]}, raw_post_aug_dir, subject_id, "listening", "listening", common_classes, raw=True)
 
         # Save CSP Features
-        save_splits_to_csv({"imagined_train": out["post_imagined_train"], "imagined_val": out["post_imagined_val"], "imagined_test": out["post_imagined_test"], "y_train_dec": out["y_train_dec"], "y_val_dec": out["y_val_dec"], "y_test_dec": out["y_test_dec"]}, csp_post_aug_dir, subject_id, "imagined_speech", "imagined", common_classes)
-        save_splits_to_csv({"attempted_train": out["post_attempted_train"], "attempted_val": out["post_attempted_val"], "attempted_test": out["post_attempted_test"], "y_train_dec": out["y_post_attempted_train_dec"], "y_val_dec": out["y_post_attempted_val_dec"], "y_test_dec": out["y_post_attempted_test_dec"]}, csp_post_aug_dir, subject_id, "attempted_speech", "attempted", common_classes)
-        save_splits_to_csv({"listening_train": out["post_listening_train"], "listening_val": out["post_listening_val"], "listening_test": out["post_listening_test"], "y_listening_train_dec": out["y_listening_train_dec"], "y_listening_val_dec": out["y_listening_val_dec"], "y_listening_test_dec": out["y_listening_test_dec"]}, csp_post_aug_dir, subject_id, "listening", "listening", common_classes, label_prefix="listening")
+        save_splits_to_csv({"imagined_train": out["post_imagined_train"], "imagined_val": out["post_imagined_val"], "imagined_test": out["post_imagined_test"], "y_imagined_train_dec": out["y_train_dec"], "y_imagined_val_dec": out["y_val_dec"], "y_imagined_test_dec": out["y_test_dec"]}, csp_post_aug_dir, subject_id, "imagined_speech", "imagined", common_classes, raw = False)
+        save_splits_to_csv({"attempted_train": out["post_attempted_train"], "attempted_val": out["post_attempted_val"], "attempted_test": out["post_attempted_test"], "y_attempted_train_dec": out["y_post_attempted_train_dec"], "y_attempted_val_dec": out["y_post_attempted_val_dec"], "y_attempted_test_dec": out["y_post_attempted_test_dec"]}, csp_post_aug_dir, subject_id, "attempted_speech", "attempted", common_classes, raw=False)
+        save_splits_to_csv({"listening_train": out["post_listening_train"], "listening_val": out["post_listening_val"], "listening_test": out["post_listening_test"], "y_listening_train_dec": out["y_listening_train_dec"], "y_listening_val_dec": out["y_listening_val_dec"], "y_listening_test_dec": out["y_listening_test_dec"]}, csp_post_aug_dir, subject_id, "listening", "listening", common_classes, raw=False)
 
         # Save CSP Metadata
         csp_w = out["csp_w"]

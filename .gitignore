@@ -37,6 +37,7 @@ TrainResult22kHz_4subs1518/subj15-16-17-18/imagined_speech/logs/
 TrainResult22kHz_710_wav2vecFTfrom384/subj18/imagined_speech/logs/
 TrainResult16kHz/subj18/imagined_speech/logs/
 preprocess/olds/
+preprocess/__pycache__/
 wav2vec2_finetuned/
 extended_infomaxcomps025-120Hz/
 eegdata_250sr_new/
