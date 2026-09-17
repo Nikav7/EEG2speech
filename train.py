@@ -67,6 +67,7 @@ METRICS_CSV_COLUMNS = [
     "train_loss_d_cl",
     "train_acc_d_real",
     "train_acc_d_fake",
+    "train_acc_d_cl",
     "val_loss_g",
     "val_loss_g_recon",
     "val_loss_g_valid",
@@ -78,6 +79,7 @@ METRICS_CSV_COLUMNS = [
     "val_loss_d_cl",
     "val_acc_d_real",
     "val_acc_d_fake",
+    "val_acc_d_cl",
     "best_val_loss_so_far",
     "is_best",
     "epoch_time_sec",
@@ -319,7 +321,7 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
     (optimizer_g, optimizer_d) = optimizers
     
     # switch to train mode
-    assert type(models) == tuple, "More than two models should be inputed (generator and discriminator)"
+    assert type(models) == tuple, "More than two models should be given (generator and discriminator)"
 
     epoch_loss_g = []
     epoch_loss_d = []
@@ -327,11 +329,11 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
     epoch_acc_g = []
     epoch_acc_d = []
     
-    epoch_loss_g_ns = []
-    epoch_loss_d_ns = []
+    # epoch_loss_g_ns = []
+    # epoch_loss_d_ns = []
     
-    epoch_acc_g_ns = []
-    epoch_acc_d_ns = []
+    # epoch_acc_g_ns = []
+    # epoch_acc_d_ns = []
 
     total_batches = len(train_loader)
     
@@ -349,7 +351,7 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
         _debug_stage(args, "voice_built", batch=i, voice_shape=tuple(voice.shape))
         
         # extract unseen
-        idx_unseen=[]
+        #idx_unseen=[]
         #idx_seen=[]
         idx_seen = list(range(len(labels)))
         # for j in range(len(labels)):
@@ -359,12 +361,12 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
         #     else:
         #         idx_seen.append(j)
         
-        input_ns = input[idx_unseen]
-        target_ns = target[idx_unseen]
-        target_cl_ns = target_cl[idx_unseen]
-        labels_ns = labels[idx_unseen]
-        voice_ns = voice[idx_unseen]
-        data_info_ns = [data_info[0][idx_unseen],data_info[1][idx_unseen]]
+        #input_ns = input[idx_unseen]
+        #target_ns = target[idx_unseen]
+        #target_cl_ns = target_cl[idx_unseen]
+        #labels_ns = labels[idx_unseen]
+        #voice_ns = voice[idx_unseen]
+        #data_info_ns = [data_info[0][idx_unseen],data_info[1][idx_unseen]]
         
         input = input[idx_seen]
         target = target[idx_seen]
@@ -400,35 +402,35 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
             epoch_acc_d.append(e_acc_d)
         
         # Unseen words training
-        if len(input_ns) != 0 :
-            # Unseen train generator
-            mel_out_ns, e_loss_g_ns, e_acc_g_ns = train_G(args, 
-                                                          input_ns, target_ns, voice_ns, labels_ns,
-                                                          models, criterions, optimizer_g, 
-                                                          data_info_ns,
-                                                          False,
-                                                          phase_is_train=trainValid,
-                                                          batch_idx=i)
-            epoch_loss_g_ns.append(e_loss_g_ns)
-            epoch_acc_g_ns.append(e_acc_g_ns)
+        #if len(input_ns) != 0 :
+        #    # Unseen train generator
+        #    mel_out_ns, e_loss_g_ns, e_acc_g_ns = train_G(args, 
+        #                                                  input_ns, target_ns, voice_ns, labels_ns,
+        #                                                  models, criterions, optimizer_g, 
+        #                                                  data_info_ns,
+        #                                                  False,
+        #                                                  phase_is_train=trainValid,
+        #                                                      batch_idx=i)
+        #    epoch_loss_g_ns.append(e_loss_g_ns)
+        #    epoch_acc_g_ns.append(e_acc_g_ns)
             
-            # Unseen train discriminator
-            e_loss_d_ns, e_acc_d_ns = train_D(args, 
-                                              mel_out_ns, target_ns, labels_ns,
-                                              models, criterions, optimizer_d, 
-                                              False)
-            epoch_loss_d_ns.append(e_loss_d_ns)
-            epoch_acc_d_ns.append(e_acc_d_ns)
+        #    # Unseen train discriminator
+        #    e_loss_d_ns, e_acc_d_ns = train_D(args, 
+        #                                      mel_out_ns, target_ns, labels_ns,
+        #                                      models, criterions, optimizer_d, 
+        #                                      False)
+        #    epoch_loss_d_ns.append(e_loss_d_ns)
+        #    epoch_acc_d_ns.append(e_acc_d_ns)
 
     epoch_loss_g = np.array(epoch_loss_g)
     epoch_acc_g = np.array(epoch_acc_g)
     epoch_loss_d = np.array(epoch_loss_d)
     epoch_acc_d = np.array(epoch_acc_d)
     
-    epoch_loss_g_ns = np.array(epoch_loss_g_ns)
-    epoch_acc_g_ns = np.array(epoch_acc_g_ns)
-    epoch_loss_d_ns = np.array(epoch_loss_d_ns)
-    epoch_acc_d_ns = np.array(epoch_acc_d_ns)
+    # epoch_loss_g_ns = np.array(epoch_loss_g_ns)
+    # epoch_acc_g_ns = np.array(epoch_acc_g_ns)
+    # epoch_loss_d_ns = np.array(epoch_loss_d_ns)
+    # epoch_acc_d_ns = np.array(epoch_acc_d_ns)
     
     
     args.loss_g = _safe_column_mean(epoch_loss_g, 0)
@@ -448,21 +450,21 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
     args.acc_cl_fake = _safe_column_mean(epoch_acc_d, 3)
 
     # Unseen
-    args.loss_g_ns = _safe_column_mean(epoch_loss_g_ns, 0)
-    args.loss_g_recon_ns = _safe_column_mean(epoch_loss_g_ns, 1)
-    args.loss_g_valid_ns = _safe_column_mean(epoch_loss_g_ns, 2)
-    args.loss_g_ctc_ns = _safe_column_mean(epoch_loss_g_ns, 3)
-    args.acc_g_valid_ns = _safe_column_mean(epoch_acc_g_ns, 0)
-    args.cer_gt_ns = _safe_column_mean(epoch_acc_g_ns, 1)
-    args.cer_recon_ns = _safe_column_mean(epoch_acc_g_ns, 2)
+    # args.loss_g_ns = _safe_column_mean(epoch_loss_g_ns, 0)
+    # args.loss_g_recon_ns = _safe_column_mean(epoch_loss_g_ns, 1)
+    # args.loss_g_valid_ns = _safe_column_mean(epoch_loss_g_ns, 2)
+    # args.loss_g_ctc_ns = _safe_column_mean(epoch_loss_g_ns, 3)
+    # args.acc_g_valid_ns = _safe_column_mean(epoch_acc_g_ns, 0)
+    # args.cer_gt_ns = _safe_column_mean(epoch_acc_g_ns, 1)
+    # args.cer_recon_ns = _safe_column_mean(epoch_acc_g_ns, 2)
 
-    args.loss_d_ns = _safe_column_mean(epoch_loss_d_ns, 0)
-    args.loss_d_valid_ns = _safe_column_mean(epoch_loss_d_ns, 1)
-    args.loss_d_cl_ns = _safe_column_mean(epoch_loss_d_ns, 2)
-    args.acc_d_real_ns = _safe_column_mean(epoch_acc_d_ns, 0)
-    args.acc_d_fake_ns = _safe_column_mean(epoch_acc_d_ns, 1)
-    args.acc_cl_real_ns = _safe_column_mean(epoch_acc_d_ns, 2)
-    args.acc_cl_fake_ns = _safe_column_mean(epoch_acc_d_ns, 3)
+    # args.loss_d_ns = _safe_column_mean(epoch_loss_d_ns, 0)
+    # args.loss_d_valid_ns = _safe_column_mean(epoch_loss_d_ns, 1)
+    # args.loss_d_cl_ns = _safe_column_mean(epoch_loss_d_ns, 2)
+    # args.acc_d_real_ns = _safe_column_mean(epoch_acc_d_ns, 0)
+    # args.acc_d_fake_ns = _safe_column_mean(epoch_acc_d_ns, 1)
+    # args.acc_cl_real_ns = _safe_column_mean(epoch_acc_d_ns, 2)
+    # args.acc_cl_fake_ns = _safe_column_mean(epoch_acc_d_ns, 3)
     
     # tensorboard
     if trainValid:
@@ -482,21 +484,21 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
             args.writer.add_scalar("ACC_D_real/{}".format(tag), args.acc_d_real, epoch)
             args.writer.add_scalar("ACC_D_fake/{}".format(tag), args.acc_d_fake, epoch)
             
-            args.writer.add_scalar("Loss_G_unseen/{}".format(tag), args.loss_g_ns, epoch)
-            args.writer.add_scalar("CER_unseen/{}".format(tag), args.cer_recon_ns, epoch)
+            # args.writer.add_scalar("Loss_G_unseen/{}".format(tag), args.loss_g_ns, epoch)
+            # args.writer.add_scalar("CER_unseen/{}".format(tag), args.cer_recon_ns, epoch)
         except Exception as exc:
             print(f"TensorBoard logging disabled after runtime error: {exc}")
             args.writer = None
 
-    print('\n[%3d/%3d] CER-gt: %.4f CER-recon: %.4f / ACC_R: %.4f ACC_F: %.4f / g-RMSE: %.4f g-lossValid: %.4f g-lossCTC: %.4f' 
+    print('\n[%3d/%3d] CER-gt: %.4f CER-recon: %.4f / ACC_R: %.4f ACC_F: %.4f ACC_CL_R: %.4f ACC_CL_F: %.4f / g-RMSE: %.4f g-lossValid: %.4f g-lossCTC: %.4f' 
           % (i, total_batches, 
              args.cer_gt, args.cer_recon, 
-             args.acc_d_real, args.acc_d_fake, 
+             args.acc_d_real, args.acc_d_fake, args.acc_cl_real, args.acc_cl_fake,
              args.loss_g_recon, args.loss_g_valid, args.loss_g_ctc))
         
         
     return (args.loss_g, args.loss_g_recon, args.loss_g_valid, args.loss_g_ctc, args.acc_g_valid, args.cer_gt, args.cer_recon,
-            args.loss_d, args.loss_d_cl, args.acc_d_real, args.acc_d_fake)
+            args.loss_d, args.loss_d_cl, args.acc_d_real, args.acc_d_fake, args.acc_d_cl, args.acc_cl_real, args.acc_cl_fake)
 
 
 def train_G(args, input, target, voice, labels, models, criterions, optimizer_g, data_info, trainValid, phase_is_train=True, batch_idx=0):
@@ -510,7 +512,7 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
     else:
         model_g.eval()
         model_d.eval()
-    # Vocoder and STT are always frozen; keep in eval mode to disable dropout and reduce activation memory.
+    # Vocoder and STT are always frozen; kept in eval mode to disable dropout and reduce activation memory.
     vocoder.eval()
     model_STT.eval()
     
@@ -575,7 +577,7 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
     #output_denorm = torch.clamp(output_denorm, min=args.vocoder_mel_min, max=args.vocoder_mel_max)
     #_assert_finite("output_denorm_after_clamp", output_denorm)
 
-    # Optionally compute the vocoder(just HiFi)+STT+CTC branch on CPU to reduce GPU memory pressure.
+    # (optionally)compute the vocoder(just HiFi)+STT+CTC branch on CPU to reduce GPU memory pressure.
     ctc_device = getattr(args, "ctc_torch_device", output_denorm.device)
     if isinstance(ctc_device, str):
         ctc_device = torch.device(ctc_device)
@@ -1001,7 +1003,7 @@ def main(args):
         print(f"TensorBoard disabled: {exc}")
         args.writer = None
 
-    # CSV metrics are always enabled for robust training logs.
+    # CSV metrics are always enabled for robust training logs
     args.metrics_csv = os.path.join(args.logs, "metrics.csv")
     _ensure_metrics_csv(args.metrics_csv)
     
@@ -1141,10 +1143,10 @@ def main(args):
 
 if __name__ == '__main__':
 
-    dataDir = './eegdata_250sr_aug9_1618_rnd1/csp_post_augmentation'
+    dataDir = './eegdata2/csp_post_augmentation_13cls_rnd3_imd_attmp03'
     audioDir = './audiodata/logmel22'
     audioWavDir = './audiodata/twos_22050'
-    logDir = './TrainResult22kHz_FT_3subs1618'
+    logDir = './TrainResult22kHz_3subs1618'
     
     parser = argparse.ArgumentParser(description='Hyperparams')
     parser.add_argument('--max_epochs', type=int, default=1000)

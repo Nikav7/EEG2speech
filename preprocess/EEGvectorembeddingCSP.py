@@ -537,7 +537,7 @@ def main() -> None:
     parser.add_argument("--subjects", nargs="+", type=int, default=[16, 17, 18, 19])
     parser.add_argument("--eeg-data-dir", default="clean_data01-120Hz")
     parser.add_argument("--output-dir", default="eegdata2")
-    parser.add_argument("--rawdata-output-dir", default="eegdata2_raw")
+    parser.add_argument("--rawdata-output-dir", default="eegdata2_rawsplits")
     args = parser.parse_args()
 
     raw_pre_aug_dir = os.path.join(args.rawdata_output_dir, "raw_pre_augmentation")
