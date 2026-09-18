@@ -1,0 +1,23 @@
+Set 1 (13 elementi):
+  Parole: ['Leg', 'Sure!', 'Foot', 'Times', 'Daughter', 'Ribbon', 'Thank you', 'Jam', 'Before', 'Love', 'Hot', 'Son', 'Seven']
+  ID:     [17, 66, 21, 33, 46, 73, 61, 53, 36, 45, 70, 47, 30]
+
+Set 2 (13 elementi):
+  Parole: ['Light', 'Joy', 'Right', 'Three', 'Partner', 'Tomorrow', 'Music', 'Zero', 'Down', 'Go on.', 'Left', 'Who?', 'Help!']
+  ID:     [12, 67, 11, 26, 48, 41, 51, 23, 9, 35, 10, 59, 68]
+
+Set 3 (13 elementi):
+  Parole: ['Hands', 'Nurse', 'Shower', 'Hello!', 'Nine', 'Tea', 'Now.', 'Why?', 'When?', 'Head', 'Two', 'Where?', 'Quit']
+  ID:     [20, 50, 42, 1, 32, 5, 37, 58, 57, 14, 25, 56, 69]
+
+Set 4 (13 elementi):
+  Parole: ['Cold', 'I can', 'Dark', 'Arms', 'Wash', 'No.', 'Heart', 'I can t', 'Yes!', 'I need', 'Feet', 'Up', 'Today']
+  ID:     [71, 64, 13, 16, 43, 3, 19, 65, 2, 62, 22, 8, 40]
+
+Set 5 (13 elementi):
+  Parole: ['Legs', 'Yesterday', 'Five', 'One', 'Food', 'After', 'Eight', 'Bath', 'Six', 'Assistant', 'Drink', 'Yellow', 'Stop!']
+  ID:     [18, 39, 28, 24, 7, 38, 31, 44, 29, 49, 52, 54, 34]
+
+Set 6 (13 elementi):
+  Parole: ['Four', 'Palm', 'How?', 'Arm', 'I want', 'What?', 'Coffee', 'Egg', 'Water', 'Daughter', 'Assistant', 'Tea', 'Today']
+  ID:     [27, 74, 60, 15, 63, 55, 6, 72, 4, 46, 49, 5, 40]

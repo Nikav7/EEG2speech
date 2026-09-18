@@ -4,6 +4,7 @@ __pycache__/
 eegdata/
 eegdata2/
 eegdata2_raw/
+eegdata2_rawsplits/
 non_augmented/
 eegdata_250sr_minaug_1519_cspcls1-13/
 eegdata_250sr_aug9_1519/

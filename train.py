@@ -577,7 +577,7 @@ def train_G(args, input, target, voice, labels, models, criterions, optimizer_g,
     #output_denorm = torch.clamp(output_denorm, min=args.vocoder_mel_min, max=args.vocoder_mel_max)
     #_assert_finite("output_denorm_after_clamp", output_denorm)
 
-    # (optionally)compute the vocoder(just HiFi)+STT+CTC branch on CPU to reduce GPU memory pressure.
+    # (optionally)compute the vocoder(just HiFi)+STT+CTC branch on CPU to reduce GPU memory pressure
     ctc_device = getattr(args, "ctc_torch_device", output_denorm.device)
     if isinstance(ctc_device, str):
         ctc_device = torch.device(ctc_device)
@@ -1036,7 +1036,7 @@ def main(args):
         speech_type=args.task,
     )
     val_loader = torch.utils.data.DataLoader(
-        valset, batch_size=args.batch_size, shuffle=False, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=True) #4*len(args.gpuNum)
+        valset, batch_size=args.batch_size, shuffle=True, generator=generator, num_workers=1*len(args.gpuNum), pin_memory=True) #4*len(args.gpuNum)
 
     epoch = start_epoch
     lr_g = 0
