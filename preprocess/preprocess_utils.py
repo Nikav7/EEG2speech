@@ -291,7 +291,10 @@ def save_splits_to_csv(out: Dict[str, np.ndarray], output_dir: str, condition_na
             label = int(original_labels[remapped_label - 1])
             split_dir = os.path.join(output_dir, f"subj{int(subj_split[i])}", condition_name, split_name)
             os.makedirs(split_dir, exist_ok=True)
-            csv_path = os.path.join(split_dir, f"label{label:03d}_samplegidx{int(idx_split[i]):05d}.csv")
+            csv_path = os.path.join(
+                split_dir,
+                f"label{label:03d}_samplegidx{int(idx_split[i]):05d}_row{i:06d}.csv",
+            )
             pd.DataFrame(x_split[i]).to_csv(csv_path, index=False, header=False)
 
 

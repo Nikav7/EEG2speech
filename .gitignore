@@ -5,6 +5,8 @@ preprocess/__pycache__/
 eegdata/
 eegdata18/
 eegdata_rawsplits/
+eegdata4/
+eegdata4_rawsplits/
 best_models/
 clean_data01-120Hz/
 clean_data025-120Hz1000sr/

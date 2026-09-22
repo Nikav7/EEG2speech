@@ -16,14 +16,133 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 import random
-from preprocess_utils import load_data, extract_epochs, to_decoded_labels, make_split_indices, save_splits_to_csv, save_csp_metadata
+from preprocess_utils import save_splits_to_csv, save_csp_metadata
+#from preprocess_utils import load_data, extract_epochs
+
 
 # Data Loading Setup
 CONDITION_BASE  = {1: 100, 2: 200, 3: 400}
-# CONDITION_NAMES = {1: 'Imagined speech', 2: 'Listening', 3: 'Attempted speech'}
-# COND_TWIN = {1: (-0.1, 2.0), 2: (-0.1, 2.0), 3: (0.2, 2.3)}
-# EVENT_SFREQ = 250
-# SFREQ = 250
+CONDITION_NAMES = {1: 'Imagined speech', 2: 'Listening', 3: 'Attempted speech'}
+COND_TWIN = {1: (-0.1, 2.0), 2: (-0.1, 2.0), 3: (0.2, 2.3)}
+EVENT_SFREQ = 250
+SFREQ = 250
+
+
+def load_data(subjects, data_dir=None):
+    event_sfreq = EVENT_SFREQ
+    event_df = pd.read_csv('events_codes.csv', header=None, names=['word', 'code', 'type'])
+    code_to_name = dict(zip(event_df['code'], event_df['word'].str.strip("'")))
+    raw_all, markers_all = {}, {}
+    for subject in subjects:
+        eeg_file  = os.path.join(data_dir, f'clean_eeg_subj{subject}.npy')
+        evts_file = os.path.join(data_dir, f'events_subj{subject}.npy')
+        ch_file   = os.path.join(data_dir, 'channel_names.csv')
+        if not all(os.path.exists(f) for f in [eeg_file, evts_file, ch_file]):
+            print(f"Subject {subject}: missing files, skipping"); continue
+        ch_names = pd.read_csv(ch_file)['Channel'].tolist()
+        eog_chs  = {'EOG1', 'EOG2', 'EOG3'}
+        ch_types = ['eog' if ch in eog_chs else 'eeg' for ch in ch_names]
+        info     = mne.create_info(ch_names=ch_names, sfreq=SFREQ, ch_types=ch_types)
+        raw      = mne.io.RawArray(np.load(eeg_file), info)
+        raw.set_montage('standard_1020')
+        raw_all[subject] = raw
+        markers = np.load(evts_file)[:-1]
+        if event_sfreq != SFREQ:
+            scale = SFREQ / event_sfreq
+            markers = markers.copy()
+            markers[:, 0] = np.round(markers[:, 0] * scale).astype(markers.dtype)
+            markers[:, 0] = np.clip(markers[:, 0], 0, len(raw) - 1)
+        markers_all[subject] = markers
+    print(f"Loaded {len(raw_all)} subjects")
+    return raw_all, markers_all, code_to_name
+
+
+def extract_epochs(raw_all, markers_all):
+    epochs_all = {c: {} for c in CONDITION_BASE}
+    for subject in raw_all:
+        markers = markers_all[subject].copy()
+        for i in range(len(markers)):
+            if 300 <= markers[i, 2] < 400:
+                markers[i, 2] = 100 + (markers[i, 2] - 300)
+        for i in range(len(markers)):
+            if markers[i, 2] == 50:
+                prev_imag = [j for j in range(i) if 100 <= markers[j, 2] < 200]
+                if prev_imag:
+                    markers[i, 2] = 400 + (markers[prev_imag[-1], 2] - 100)
+        codes = np.unique(markers[:, 2])
+        for cond, base in CONDITION_BASE.items():
+            cond_codes = [c for c in codes if base <= c < base + 100]
+            if not cond_codes:
+                continue
+            tmin, tmax = COND_TWIN[cond]
+            epochs_all[cond][subject] = mne.Epochs(
+                raw_all[subject], markers,
+                event_id={f'e{c}': int(c) for c in cond_codes},
+                tmin=tmin, tmax=tmax, picks='eeg', baseline=(None if cond== 3 else (-0.1, tmin)),
+                preload=True, reject=None, flat=None,
+            )
+    return epochs_all
+
+
+@dataclass
+class SplitIndices:
+    train: np.ndarray
+    test: np.ndarray
+    val: np.ndarray
+
+
+def to_decoded_labels(y: np.ndarray) -> np.ndarray:
+    y = np.asarray(y)
+    if y.ndim == 2:
+        return np.argmax(y, axis=1).astype(np.int32) + 1
+    if y.ndim != 1:
+        raise ValueError(f"Labels must be 1D or 2D, got shape={y.shape}")
+
+    y = y.astype(np.int32)
+    if y.min() == 0:
+        y = y + 1
+    return y
+
+
+def make_split_indices(
+    y_dec: np.ndarray,
+    seed: int = 0,
+    val_ratio: float = 0.2,
+    test_ratio: float = 0.1,
+    enforce_val_class_coverage: bool = True,
+) -> SplitIndices:
+    y_dec = np.asarray(y_dec).astype(np.int32)
+    rng = np.random.RandomState(seed)
+
+    n_total = y_dec.shape[0]
+    required_classes = np.unique(y_dec)
+    class_seed_val = []
+    if enforce_val_class_coverage:
+        for cls in required_classes:
+            cls_idx = np.flatnonzero(y_dec == cls)
+            if cls_idx.size > 0:
+                class_seed_val.append(rng.choice(cls_idx))
+
+    class_seed_val = np.array(sorted(set(class_seed_val)), dtype=np.int64)
+    n_required_val = class_seed_val.size
+
+    n_val_target = max(int(round(n_total * val_ratio)), n_required_val)
+    n_test_target = max(1, int(round(n_total * test_ratio)))
+
+    remaining_after_seed = np.setdiff1d(np.arange(n_total, dtype=np.int64), class_seed_val)
+    n_extra_val = n_val_target - n_required_val
+
+    extra_val = np.array([], dtype=np.int64)
+    if n_extra_val > 0 and remaining_after_seed.size >= n_extra_val:
+        extra_val = rng.choice(remaining_after_seed, size=n_extra_val, replace=False)
+
+    val_idx = np.sort(np.concatenate([class_seed_val, extra_val]))
+    remaining_after_val = np.setdiff1d(np.arange(n_total, dtype=np.int64), val_idx)
+
+    test_idx = np.sort(rng.choice(remaining_after_val, size=min(n_test_target, remaining_after_val.size - 1), replace=False))
+    train_idx = np.sort(np.setdiff1d(remaining_after_val, test_idx))
+
+    return SplitIndices(train=train_idx, test=test_idx, val=val_idx)
 
 
 def get_way_matrix(n_classes: int, way: str) -> np.ndarray:
@@ -408,18 +527,50 @@ def prepare_vector_embedding_inputs(epochs_all: Dict[int, Dict[int, mne.Epochs]]
     return x_imagined, y_imagined, x_attempted, y_attempted, x_listening, y_listening, subj_imagined, subj_attempted, subj_listening #common_classes.astype(np.int32), class_map
 
 
+# def save_splits_to_csv(out: Dict[str, np.ndarray], output_dir: str, condition_name: str, condition_prefix: str, original_labels: np.ndarray, label_prefix: str | None = None, raw: bool = False) -> None:
+#     label_prefix = condition_prefix if label_prefix is None else label_prefix
+#     key_prefix = "raw_" if raw else ""
+#     split_map = {
+#         "train": (f"{key_prefix}{condition_prefix}_train", f"y_{label_prefix}_train_dec", f"subj_{condition_prefix}_train", f"idx_{condition_prefix}_train"),
+#         "val": (f"{key_prefix}{condition_prefix}_val", f"y_{label_prefix}_val_dec", f"subj_{condition_prefix}_val", f"idx_{condition_prefix}_val"),
+#         "test": (f"{key_prefix}{condition_prefix}_test", f"y_{label_prefix}_test_dec", f"subj_{condition_prefix}_test", f"idx_{condition_prefix}_test"),
+#     }
+
+#     for split_name, (x_key, y_key, subj_key, idx_key) in split_map.items():
+#         if x_key not in out or y_key not in out:
+#             continue
+#         x_split, y_split = out[x_key], out[y_key]
+#         subj_split, idx_split = out[subj_key], out[idx_key]
+
+#         for i in range(x_split.shape[0]):
+#             remapped_label = int(y_split[i])
+#             label = int(original_labels[remapped_label - 1])
+#             split_dir = os.path.join(output_dir, f"subj{int(subj_split[i])}", condition_name, split_name)
+#             os.makedirs(split_dir, exist_ok=True)
+#             csv_path = os.path.join(split_dir, f"label{label:03d}_samplegidx{int(idx_split[i]):05d}.csv")
+#             pd.DataFrame(x_split[i]).to_csv(csv_path, index=False, header=False)
+
+
+# def save_csp_metadata(csv_name: str, metadata: List[Dict[str, Any]], output_dir: str) -> None:
+#     """Save aggregated metadata to a named CSV in the main output folder."""
+#     os.makedirs(output_dir, exist_ok=True)
+#     csv_path = os.path.join(output_dir, f"{csv_name}.csv")
+    
+#     df_meta = pd.DataFrame(metadata)
+#     df_meta.to_csv(csv_path, index=False)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subjects", nargs="+", type=int, default=[15, 16, 17, 18, 19])
     parser.add_argument("--eeg-data-dir", default="clean_data01-120Hz")
-    parser.add_argument("--output-dir", default="eegdata1")
-    parser.add_argument("--rawdata-output-dir", default="eegdata_rawsplits")
+    parser.add_argument("--output-dir", default="eegdata4")
+    parser.add_argument("--rawdata-output-dir", default="eegdata4_rawsplits")
     args = parser.parse_args()
 
-    raw_pre_aug_dir = os.path.join(args.rawdata_output_dir, "raw_pre_augmentation2")
-    raw_post_aug_dir = os.path.join(args.rawdata_output_dir, "raw_post_augmentation_no_csp1")
-    csp_post_aug_dir = os.path.join(args.output_dir, "csp_post_augmentation20_6_sets_newnoise")
+    raw_pre_aug_dir = os.path.join(args.rawdata_output_dir, "raw_pre_augmentation")
+    raw_post_aug_dir = os.path.join(args.rawdata_output_dir, "raw_post_augmentation_no_csp")
+    csp_post_aug_dir = os.path.join(args.output_dir, "csp_post_augmentation_6_sets_subtog")
 
     #CSP params and others
     numcsp = 4
