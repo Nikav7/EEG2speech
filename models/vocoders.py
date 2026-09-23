@@ -80,6 +80,36 @@ class TorchaudioHiFiGAN16k(nn.Module):
         wav = gen(mel_linear.to(vocoder_device))
         return wav
 
+class GriffinLimVocoder_(torch.nn.Module):
+	"""Griffin-Lim vocoder with explicit STFT params."""
+
+	def __init__(self, sample_rate: int, n_mels: int, n_fft: int, win_length: int, hop_length: int, n_iter: int):
+		super().__init__()
+		n_fft = int(n_fft)
+		win_length = int(win_length)
+		hop_length = int(hop_length)
+
+		n_stft = (n_fft // 2) + 1
+		self.inv_mel = torchaudio.transforms.InverseMelScale(
+			n_stft=n_stft,
+			n_mels=int(n_mels),
+			sample_rate=int(sample_rate),
+		)
+		self.griffin = torchaudio.transforms.GriffinLim(
+			n_fft=n_fft,
+			n_iter=int(n_iter),
+			win_length=win_length,
+			hop_length=hop_length,
+			power=2.0,
+		)
+
+	def forward(self, mel: torch.Tensor) -> torch.Tensor:
+		mel_in = mel.float()
+		mel_linear = torchaudio.functional.DB_to_amplitude(mel_in, ref=1.0, power=1.0).clamp_min(1e-8)
+		spec = self.inv_mel(mel_linear).clamp_min(1e-8)
+		wav = self.griffin(spec)
+		return wav.unsqueeze(1)
+
 
 class GriffinLimVocoder(nn.Module):
             def __init__(self, n_mels: int, sample_rate: int):

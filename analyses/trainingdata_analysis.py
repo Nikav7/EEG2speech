@@ -20,7 +20,7 @@ def parse_args():
     )
     parser.add_argument(
         "--eeg-source-dir",
-        default=os.path.join("eegdata_rawsplits", "raw_pre_augmentation_6_sets_subtog15"), #"raw_pre_augmentation" "raw_post_augmentation_no_csp" "csp_post_augmentation" 
+        default=os.path.join("eegdata", "csp_post_augmentation20_6_sets_subtog", "set6"), #"raw_pre_augmentation" "raw_post_augmentation_no_csp" "csp_post_augmentation" 
         help="Root folder containing task subfolders (imagined_speech, attempted_speech, listening), each with train/val/test.",
     )
     parser.add_argument(
@@ -32,7 +32,7 @@ def parse_args():
     )
     parser.add_argument(
         "--output-dir",
-        default=os.path.join("plots","1619", "RAW_NOaug_6_sets_subtog15"), # "plots/subjs16-19_cspcls1-13" "plots/subjs16-19_raw_pre_augmentation"
+        default=os.path.join("plots","1619", "CSP_post_augmentation20_6_sets_subtog_set6"), # "plots/subjs16-19_cspcls1-13" "plots/subjs16-19_raw_pre_augmentation"
         help="Directory where UMAP/t-SNE plots are saved.."
     )
     parser.add_argument(
@@ -66,7 +66,7 @@ def parse_args():
     )
     parser.add_argument(
         "--feature-label",
-        default="Raw EEG after splitting. 2d-TSNE visualization.",
+        default="EEG transformed with CSP, after augmentation. 2d-TSNE visualization.",
         help="Label describing the feature/data type used in plot titles.",
     )
     return parser.parse_args()

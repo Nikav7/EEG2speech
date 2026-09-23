@@ -67,7 +67,8 @@ METRICS_CSV_COLUMNS = [
     "train_loss_d_cl",
     "train_acc_d_real",
     "train_acc_d_fake",
-    "train_acc_d_cl",
+    "train_acc_d_cl_real",
+    "train_acc_d_cl_fake",
     "val_loss_g",
     "val_loss_g_recon",
     "val_loss_g_valid",
@@ -79,7 +80,8 @@ METRICS_CSV_COLUMNS = [
     "val_loss_d_cl",
     "val_acc_d_real",
     "val_acc_d_fake",
-    "val_acc_d_cl",
+    "val_acc_d_cl_real",
+    "val_acc_d_cl_fake",
     "best_val_loss_so_far",
     "is_best",
     "epoch_time_sec",
@@ -498,7 +500,7 @@ def train(args, train_loader, models, criterions, optimizers, epoch, trainValid=
         
         
     return (args.loss_g, args.loss_g_recon, args.loss_g_valid, args.loss_g_ctc, args.acc_g_valid, args.cer_gt, args.cer_recon,
-            args.loss_d, args.loss_d_cl, args.acc_d_real, args.acc_d_fake, args.acc_d_cl, args.acc_cl_real, args.acc_cl_fake)
+            args.loss_d, args.loss_d_cl, args.acc_d_real, args.acc_d_fake, args.acc_cl_real, args.acc_cl_fake)
 
 
 def train_G(args, input, target, voice, labels, models, criterions, optimizer_g, data_info, trainValid, phase_is_train=True, batch_idx=0):
@@ -740,9 +742,11 @@ def train_D(args, mel_out, target, labels, models, criterions, optimizer_d, trai
     loss_d_real_valid = criterion_adv(real_valid, valid)
     loss_d_fake_valid = criterion_adv(fake_valid, fake)
     loss_d_real_cl = criterion_cl(real_cl, labels)
+    loss_d_fake_cl = criterion_cl(fake_cl, labels)
     
     loss_d_valid = 0.5 * (loss_d_real_valid + loss_d_fake_valid)
-    loss_d_cl = loss_d_real_cl
+    #loss_d_cl = loss_d_real_cl
+    loss_d_cl = 0.5 * (loss_d_real_cl + loss_d_fake_cl)
     
     loss_d = args.l_d[0] * loss_d_cl + args.l_d[1] * loss_d_valid
     
@@ -1104,6 +1108,45 @@ def main(args):
 
         time_taken = time.time() - start_time
 
+        ## remember   return (args.loss_g, args.loss_g_recon, args.loss_g_valid, args.loss_g_ctc, args.acc_g_valid, args.cer_gt, args.cer_recon,
+        ## args.loss_d, args.loss_d_cl, args.acc_d_real, args.acc_d_fake, args.acc_cl_real, args.acc_cl_fake)
+
+        ## AND metrics rows
+
+        ##METRICS_CSV_COLUMNS = [
+                # "epoch",
+                # "lr_g",
+                # "lr_d",
+                # "train_loss_g",
+                # "train_loss_g_recon",
+                # "train_loss_g_valid",
+                # "train_loss_g_ctc",
+                # "train_acc_g_valid",
+                # "train_cer_gt",
+                # "train_cer_recon",
+                # "train_loss_d",
+                # "train_loss_d_cl",
+                # "train_acc_d_real",
+                # "train_acc_d_fake",
+                # "train_acc_d_cl_real",
+                # "train_acc_d_cl_fake",
+                # "val_loss_g",
+                # "val_loss_g_recon",
+                # "val_loss_g_valid",
+                # "val_loss_g_ctc",
+                # "val_acc_g_valid",
+                # "val_cer_gt",
+                # "val_cer_recon",
+                # "val_loss_d",
+                # "val_loss_d_cl",
+                # "val_acc_d_real",
+                # "val_acc_d_fake",
+                # "val_acc_d_cl_real",
+                # "val_acc_d_cl_fake",
+                # "best_val_loss_so_far",
+                # "is_best",
+                # "epoch_time_sec",
+        
         metrics_row = {
             "epoch": int(epoch),
             "lr_g": float(lr_g),
@@ -1119,6 +1162,8 @@ def main(args):
             "train_loss_d_cl": float(Tr_losses[8]),
             "train_acc_d_real": float(Tr_losses[9]),
             "train_acc_d_fake": float(Tr_losses[10]),
+            "train_acc_d_cl_real": float(Tr_losses[11]),
+            "train_acc_d_cl_fake": float(Tr_losses[12]),
             "val_loss_g": float(Val_losses[0]),
             "val_loss_g_recon": float(Val_losses[1]),
             "val_loss_g_valid": float(Val_losses[2]),
@@ -1130,6 +1175,8 @@ def main(args):
             "val_loss_d_cl": float(Val_losses[8]),
             "val_acc_d_real": float(Val_losses[9]),
             "val_acc_d_fake": float(Val_losses[10]),
+            "val_acc_d_cl_real": float(Val_losses[11]),
+            "val_acc_d_cl_fake": float(Val_losses[12]),
             "best_val_loss_so_far": float(best_loss),
             "is_best": int(is_best),
             "epoch_time_sec": float(time_taken),
@@ -1143,13 +1190,13 @@ def main(args):
 
 if __name__ == '__main__':
 
-    dataDir = './eegdata2/csp_post_augmentation_13cls_rnd3_imd_attmp03'
+    dataDir = './eegdata/csp_post_augmentation20_6_sets_subtog/set1'
     audioDir = './audiodata/logmel22'
     audioWavDir = './audiodata/twos_22050'
-    logDir = './TrainResult22kHz_3subs1618'
+    logDir = './TrainResult22kHz_4subs16171819'
     
     parser = argparse.ArgumentParser(description='Hyperparams')
-    parser.add_argument('--max_epochs', type=int, default=1000)
+    parser.add_argument('--max_epochs', type=int, default=500)
     parser.add_argument('--vocoder_pre', type=str, default='UNIVERSAL_V1/g_02500000', help='pretrained vocoder file path')
     parser.add_argument('--vocoder_type', type=str, default='hifigan', choices=['hifigan', 'hifigan_16k', 'griffinlim'], help='vocoder backend to synthesize waveform from mel')
     parser.add_argument('--trained_model', type=str, default=None, help='trained model for G & D folder path')
@@ -1168,7 +1215,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug_batch_trace', type=int, choices=[0, 1], default=0, help='Print the last successful training stage for each batch')
     parser.add_argument('--debug_cuda_sync', type=int, choices=[0, 1], default=0, help='Synchronize CUDA after each debug stage to localize silent kernel failures')
     parser.add_argument('--debug_cuda_memory', type=int, choices=[0, 1], default=0, help='Print allocated and reserved CUDA memory at each debug stage')
-    parser.add_argument('--sub', nargs='+', type=int, default=[16, 17, 18])
+    parser.add_argument('--sub', nargs='+', type=int, default=[16, 17, 18, 19])
     parser.add_argument('--task', type=str, default='imagined_speech')
 
     parser.add_argument('--recon', type=str, default='Y_mel')
