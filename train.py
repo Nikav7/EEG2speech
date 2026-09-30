@@ -244,7 +244,7 @@ def _build_voice_batch(labels, wav_cache, device):
 
 
 def _stt_forward_chunked(model_stt, wave, chunk_size, requires_grad):
-    """Run STT in smaller chunks to reduce peak GPU memory."""
+    """Run STT in smaller chunks to reduce memory usage."""
     batch_size = int(wave.size(0))
     if chunk_size is None or chunk_size <= 0:
         chunk_size = batch_size
@@ -1090,7 +1090,7 @@ def main(args):
                  'optimizer_state_dict': optimizer_d.state_dict()}
         
         # Did validation loss improve?
-        loss_total =  Val_losses[0]
+        loss_total =  Val_losses[1] #based on best val rmse
         is_best = loss_total < best_loss
         best_loss = min(loss_total, best_loss)
 
@@ -1190,7 +1190,7 @@ def main(args):
 
 if __name__ == '__main__':
 
-    dataDir = './eegdata/csp_post_augmentation20_6_sets_subtog/set1'
+    dataDir = './eegdata/CSP_NOAUG_6_sets_subtog/set4'
     audioDir = './audiodata/logmel22'
     audioWavDir = './audiodata/twos_22050'
     logDir = './TrainResult22kHz_4subs16171819'

@@ -10,8 +10,15 @@ import pandas as pd
 
 import numpy as np
 import mne
-from mne.decoding import CSP
+#from mne.decoding import CSP
 import pandas as pd
+from pyriemann.estimation import Covariances
+from pyriemann.tangentspace import TangentSpace
+from pyriemann.utils.mean import mean_riemann
+from pyriemann.utils.tangentspace import tangent_space
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -328,7 +335,7 @@ def return_rnd_splits(data):
     return sets
 
 
-##########################   CSP   ######################
+##########################   CSP  and Riemannian Geometry ######################
 
 def get_way_matrix(n_classes: int, way: str) -> np.ndarray:
     if way == "one-vs-all":
@@ -410,6 +417,14 @@ def svm_score(
     )
     classifier.fit(x_train.reshape(x_train.shape[0], -1), y_train)
     return float(classifier.score(x_eval.reshape(x_eval.shape[0], -1), y_eval))
+
+
+def riemannian_embedding(X):
+    covs  = Covariances(estimator='lwf').fit_transform(X)
+    ts    = make_pipeline(TangentSpace(metric='riemann'), StandardScaler())
+    X_emb = ts.fit_transform(covs)
+    return covs, X_emb
+
 
 def rndm_nonov_splits(items, chunk_size=13):
     return [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]

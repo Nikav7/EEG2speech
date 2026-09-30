@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
-vlines_x = [70, 196, 200, 300, 358, 400]
-vlines_colors = ['red', 'black', 'red', 'red', 'red', 'black']
+vlines_x = [100, 200, 300, 400]
+vlines_colors = ['black', 'black', 'black', 'black']
 
 def add_vlines():
     for x, c in zip(vlines_x, vlines_colors):
@@ -17,7 +17,7 @@ def add_min_val_vlines(val_series, epochs_series, n=10, color='blue', min_epoch=
     for x in epochs_series.loc[best_idx]:
         plt.axvline(x=x, color=color, linestyle='--', alpha=0.5)
 
-data_path = 'TrainResult22kHz_FT_3subs1618/subj16-17-18/imagined_speech/logs/merged_metrics.csv'
+data_path = 'TrainResult22kHz_4subs16171819/subj16-17-18-19/imagined_speech/logs/metrics.csv'
 path_parts = os.path.normpath(data_path).split(os.sep)
 output_prefix = path_parts[0] if len(path_parts) > 1 else os.path.splitext(os.path.basename(data_path))[0]
 
@@ -51,6 +51,9 @@ val_cer_gt,val_cer_recon = df['val_cer_gt'],df['val_cer_recon']
 
 train_loss_d,train_acc_d_real,train_acc_d_fake = df['train_loss_d'],df['train_acc_d_real'],df['train_acc_d_fake']
 val_loss_d,val_acc_d_real,val_acc_d_fake = df['val_loss_d'],df['val_acc_d_real'],df['val_acc_d_fake']
+
+train_acc_d_cl_real,train_acc_d_cl_fake = df['train_acc_d_cl_real'],df['train_acc_d_cl_fake']
+val_acc_d_cl_real,val_acc_d_cl_fake = df['val_acc_d_cl_real'],df['val_acc_d_cl_fake']
 
 epoch_times = df['epoch_time_sec']
 sum_epoch_times = sum(epoch_times)
@@ -127,6 +130,17 @@ plt.ylabel('Accuracies Discriminator')
 plt.title('Accuracies over Epochs (Discriminator 22kHz)')
 plt.legend()
 plt.savefig(f'{output_prefix}_accuracy_Discriminator.png')
+
+plt.figure(figsize=(10, 6))
+plt.plot(epochs, train_acc_d_cl_real, label='Train Real', color='blue')
+plt.plot(epochs, train_acc_d_cl_fake, label='Train Fake', color='green')
+plt.plot(epochs, val_acc_d_cl_real, label='Validation Real', color='orange')
+plt.plot(epochs, val_acc_d_cl_fake, label='Validation Fake', color='red')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracies Classifier (D)')
+plt.title('Classification Accuracies over Epochs (Discriminator 22kHz)')
+plt.legend()
+plt.savefig(f'{output_prefix}_accuracy_Classifier.png')
 
 plt.figure(figsize=(10, 6))
 plt.plot(epochs, train_cer_gt, label='CER gt train', color='blue')

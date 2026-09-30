@@ -20,7 +20,7 @@ def parse_args():
     )
     parser.add_argument(
         "--eeg-source-dir",
-        default=os.path.join("eegdata", "csp_post_augmentation20_6_sets_subtog", "set6"), #"raw_pre_augmentation" "raw_post_augmentation_no_csp" "csp_post_augmentation" 
+        default=os.path.join("eegdata74", "csp_NOaugmentation_6_sets_subtog"), #"raw_pre_augmentation" "raw_post_augmentation_no_csp" "csp_post_augmentation" 
         help="Root folder containing task subfolders (imagined_speech, attempted_speech, listening), each with train/val/test.",
     )
     parser.add_argument(
@@ -28,12 +28,12 @@ def parse_args():
         nargs="+",
         type=int,
         default=[15, 16, 17, 18, 19],
-        help="Subject ID for the EEG data.",
+        help="Subject IDs for the EEG data.",
     )
     parser.add_argument(
         "--output-dir",
-        default=os.path.join("plots","1619", "CSP_post_augmentation20_6_sets_subtog_set6"), # "plots/subjs16-19_cspcls1-13" "plots/subjs16-19_raw_pre_augmentation"
-        help="Directory where UMAP/t-SNE plots are saved.."
+        default=os.path.join("plots","1619", "CSP_NOAUG_74cls"), # "plots/subjs16-19_cspcls1-13" "plots/subjs16-19_raw_pre_augmentation"
+        help="Directory where UMAP/t-SNE plots are saved."
     )
     parser.add_argument(
         "--seed",
@@ -66,7 +66,7 @@ def parse_args():
     )
     parser.add_argument(
         "--feature-label",
-        default="EEG transformed with CSP, after augmentation. 2d-TSNE visualization.",
+        default="EEG transformed with CSP (no augmentation, CSP trained on 74 classes).",
         help="Label describing the feature/data type used in plot titles.",
     )
     return parser.parse_args()
@@ -558,24 +558,18 @@ def save_class_condition_counts_csv(
     counts_df.to_csv(out_path)
 
 
-def main():
-    args = parse_args()
-
+def process_source(eeg_source_dir, output_dir, args, id_to_name):
     feature_label = args.feature_label
     tsne_title_fontsize = 20
     tsne_legend_fontsize = 11
     tsne_subplot_title_fontsize = 15
     tsne_axis_label_fontsize = 14
 
-    output_dir = args.output_dir if args.output_dir else args.eeg_source_dir
     os.makedirs(output_dir, exist_ok=True)
-
-    id_to_name = load_event_names(args.events_codes)
-    print(f"Loaded {len(id_to_name)} event names from {args.events_codes}")
 
     rng = np.random.default_rng(args.seed)
 
-    root_name = os.path.basename(os.path.normpath(args.eeg_source_dir)).lower()
+    root_name = os.path.basename(os.path.normpath(eeg_source_dir)).lower()
     root_is_subject_dir = root_name.startswith("subj")
 
     condition_name_to_idx = {name: idx for idx, name in enumerate(args.tasks)}
@@ -596,20 +590,20 @@ def main():
         if root_is_subject_dir:
             task_dirs = []
             for subj_id in args.subject_id:
-                task_dir = os.path.join(args.eeg_source_dir, task_name)
+                task_dir = os.path.join(eeg_source_dir, task_name)
                 if os.path.isdir(task_dir):
                     task_dirs.append((subj_id, task_dir))
         else:
             task_dirs = []
             for subj_id in args.subject_id:
-                task_dir = os.path.join(args.eeg_source_dir, f"subj{subj_id}", task_name)
+                task_dir = os.path.join(eeg_source_dir, f"subj{subj_id}", task_name)
                 if os.path.isdir(task_dir):
                     task_dirs.append((subj_id, task_dir))
 
         if not task_dirs:
             print(
                 f"for subject IDs {args.subject_id}"
-                f"under {args.eeg_source_dir}"
+                f"under {eeg_source_dir}"
                 f"for subject IDs {args.subject_id}"
             )
             continue
@@ -842,6 +836,33 @@ def main():
             axis_label_fontsize=tsne_axis_label_fontsize,
         )
         print("Saved cumulative subject t-SNE plot:", cumulative_subject_path)
+
+
+def main():
+    args = parse_args()
+    id_to_name = load_event_names(args.events_codes)
+    print(f"Loaded {len(id_to_name)} event names from {args.events_codes}")
+
+    base_output_dir = args.output_dir if args.output_dir else args.eeg_source_dir
+    set_dirs = sorted(
+        d for d in os.listdir(args.eeg_source_dir)
+        if d.startswith("set") and os.path.isdir(os.path.join(args.eeg_source_dir, d))
+    ) if os.path.isdir(args.eeg_source_dir) else []
+
+    if not set_dirs:
+        # eeg-source-dir already points to a single set (or non-set) folder.
+        process_source(args.eeg_source_dir, base_output_dir, args, id_to_name)
+        return
+
+    for set_name in set_dirs:
+        print(f"=== Processing {set_name} ===")
+        process_source(
+            os.path.join(args.eeg_source_dir, set_name),
+            os.path.join(base_output_dir, set_name),
+            args,
+            id_to_name,
+        )
+
 
 if __name__ == "__main__":
     main()

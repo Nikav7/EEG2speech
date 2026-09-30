@@ -53,5 +53,5 @@ for idx, s in enumerate(sets, 1):
     words = [item[0] for item in s]
     ids = [item[1] for item in s]
     print(f"Set {idx} ({len(s)} elements):")
-    print(f"  Parole: {words}")
+    print(f"  Classes: {words}")
     print(f"  ID:     {ids}\n")
