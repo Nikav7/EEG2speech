@@ -27,11 +27,12 @@ ORIGINAL_MELS = os.path.join(PROJECT_ROOT, "audiodata", "logmel22")
 
 SR = 22050
 
-N_MELS = 40
+N_MELS = 80
 FMIN = 20.0
 FMAX = SR / 2.0
-N_MFCC = 80
+N_MFCC = 40
 W2V_MODEL_NAME = "facebook/wav2vec2-base-960h"
+WHISPER_MODEL_NAME = "openai/whisper-base"
 HUBERT_MODEL_NAME = "facebook/hubert-large-ls960-ft"
 W2V_FT_PATH = os.path.join(PROJECT_ROOT, "wav2vec2_finetuned")
 RUN_W2V_TSNE = True
@@ -486,7 +487,7 @@ def compute_cer_paired_rows(
     paired_rows: List[dict],
     generated_wav_dir: str,
     original_wav_dir: str,
-    model_name: str = W2V_MODEL_NAME,
+    model_name: str = WHISPER_MODEL_NAME,
     finetuned_path: str = W2V_FT_PATH,
     target_sr: int = CER_TARGET_SR,
 ) -> List[dict]:
@@ -976,14 +977,14 @@ if __name__ == "__main__":
             paired_rows=paired_rows,
             generated_wav_dir=generated_wav_dir,
             original_wav_dir=AUDIODATA_DIR,
-            model_name=W2V_MODEL_NAME,
+            model_name=WHISPER_MODEL_NAME,
             finetuned_path=None,
             target_sr=CER_TARGET_SR,
         )
         _write_metric_summary_csv(
             cer_w2v_base_rows,
             "cer",
-            os.path.join(output_dir, "cer_wav2vec_base_summary.csv"),
+            os.path.join(output_dir, "cer_whisper_base_summary.csv"),
         )
 
         # 2) CER with wav2vec fine-tuned checkpoint
