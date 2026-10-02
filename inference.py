@@ -16,7 +16,7 @@ from models import ntGAN as networks
 from models.vocoders import Generator as HiFiGANGenerator
 from modules import AttrDict
 from modules import DTW_align
-from utils import GriffinLimVocoder_ as GriffinLimVocoder
+from models.vocoders import GriffinLimVocoder_ as GriffinLimVocoder
 
 
 EPSILON = np.finfo(float).eps
@@ -235,19 +235,26 @@ def _resolve_subject_dirs(test_eeg_dir: str, subjects_csv: str) -> List[Tuple[st
 		]
 		requested_subjects = [s for s in requested_subjects if s]
 
-	# Backward-compatible single test dir support.
-	csv_files = [name for name in os.listdir(test_eeg_dir) if name.lower().endswith(".csv")]
-	if csv_files:
-		subject_id = os.path.basename(os.path.dirname(os.path.dirname(test_eeg_dir)))
-		if not subject_id:
-			subject_id = "subject"
-		if requested_subjects and subject_id not in requested_subjects:
-			raise ValueError(
-				f"Requested subjects {requested_subjects} do not match detected single-subject folder: {subject_id}"
-			)
-		return [(subject_id, test_eeg_dir)]
-
 	# Multi-subject root: .../eegdata_/subjXX/imagined_speech/test
+	# Check cause there are the metadata CSVs.
+	has_subject_subdirs = any(
+		name.lower().startswith("subj") and os.path.isdir(os.path.join(test_eeg_dir, name))
+		for name in os.listdir(test_eeg_dir)
+	)
+
+	# if not has_subject_subdirs:
+	# 	# Backward-compatible single test dir support.
+	# 	csv_files = [name for name in os.listdir(test_eeg_dir) if name.lower().endswith(".csv")]
+	# 	if csv_files:
+	# 		subject_id = os.path.basename(os.path.dirname(os.path.dirname(test_eeg_dir)))
+	# 		if not subject_id:
+	# 			subject_id = "subject"
+	# 		if requested_subjects and subject_id not in requested_subjects:
+	# 			raise ValueError(
+	# 				f"Requested subjects {requested_subjects} do not match detected single-subject folder: {subject_id}"
+	# 			)
+	# 		return [(subject_id, test_eeg_dir)]
+
 	resolved: List[Tuple[str, str]] = []
 	for name in sorted(os.listdir(test_eeg_dir)):
 		subj_dir = os.path.join(test_eeg_dir, name)
@@ -277,8 +284,7 @@ def _resolve_subject_dirs(test_eeg_dir: str, subjects_csv: str) -> List[Tuple[st
 
 	if not resolved:
 		raise RuntimeError(
-			"No subject test folders found. Expected either a direct test CSV folder or subject folders at "
-			"<root>/subjXX/imagined_speech/test"
+			"No subject test folders found"
 		)
 
 	return resolved
@@ -451,33 +457,32 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--generator-checkpoint",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\TrainResult22kHz_FT_3subs1618\subj16-17-18\imagined_speech\savemodel\BEST_checkpoint_g_epoch440.pt",
+		default=os.path.join(project_root, "TrainResult22kHz_FT_3subs1618", "subj16-17-18", "imagined_speech", "savemodel", "BEST_checkpoint_g_epoch475.pt"),
 		help="Path to trained generator checkpoint",
 	)
 	parser.add_argument(
 		"--generator-config",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\models\config_G.json",
+		default=os.path.join(project_root,"models", "config_G.json"),
 		help="Path to generator config JSON",
 	)
 	parser.add_argument(
 		"--test-eeg-dir",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\eegdata_250sr_aug9_1619_cspcls1-13",
+		default=os.path.join(project_root, "eegdata","eegdata_250sr_aug9_1619_rnd1", "csp_post_augmentation"),
 		help="Either a single test CSV folder (.../subjXX/imagined_speech/test) or a root folder containing subjXX subfolders",
 	)
 	parser.add_argument(
 		"--subjects",
 		type=str,
-		default="15,16,17,18,19",
+		default="subj16,subj17,subj18,subj19",
 		help="Optional comma-separated subject IDs to run (e.g. subj16,subj17 or 16,17)",
 	)
 
-	
 	parser.add_argument(
 		"--audio-mel-dir",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\audiodata\logmel22",
+		default=os.path.join(project_root, "audiodata","logmel22"),
 		help="Folder with audioN_logmel.csv templates used for denormalization",
 	)
 	parser.add_argument(
@@ -502,7 +507,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--vocoder-checkpoint",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\UNIVERSAL_V1\g_02500000",
+		default=os.path.join(project_root, "UNIVERSAL_V1", "g_02500000"),
 		help="HiFi-GAN UNIVERSAL_V1 checkpoint path",
 	)
 	parser.add_argument(
@@ -545,7 +550,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--output-dir",
 		type=str,
-		default=r"C:\Users\hssn_\Desktop\EEG2speech\inference22kHz_3subs1618_bestep440",
+		default=os.path.join(project_root, "inference22kHz_3subs1618_ep475"),
 		help="Directory to save outputs as per-subject subfolders (mel_csv + wav)",
 	)
 	return parser.parse_args()

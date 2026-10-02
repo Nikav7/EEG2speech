@@ -20,7 +20,7 @@ def parse_args():
     )
     parser.add_argument(
         "--eeg-source-dir",
-        default=os.path.join("eegdata74", "csp_NOaugmentation_6_sets_subtog"), #"raw_pre_augmentation" "raw_post_augmentation_no_csp" "csp_post_augmentation" 
+        default=os.path.join("eegdata", "CSP_NOAUG_6_sets_subtog"), #"raw_pre_augmentation" "raw_post_augmentation_no_csp" "csp_post_augmentation" 
         help="Root folder containing task subfolders (imagined_speech, attempted_speech, listening), each with train/val/test.",
     )
     parser.add_argument(
@@ -32,7 +32,7 @@ def parse_args():
     )
     parser.add_argument(
         "--output-dir",
-        default=os.path.join("plots","1619", "CSP_NOAUG_74cls"), # "plots/subjs16-19_cspcls1-13" "plots/subjs16-19_raw_pre_augmentation"
+        default=os.path.join("plots","1619", "CSP_NOAUG_sets_subjects"), # "plots/subjs16-19_cspcls1-13" "plots/subjs16-19_raw_pre_augmentation"
         help="Directory where UMAP/t-SNE plots are saved."
     )
     parser.add_argument(
@@ -66,7 +66,7 @@ def parse_args():
     )
     parser.add_argument(
         "--feature-label",
-        default="EEG transformed with CSP (no augmentation, CSP trained on 74 classes).",
+        default="EEG transformed with CSP (no augmentation, CSP trained on 13 classes).",
         help="Label describing the feature/data type used in plot titles.",
     )
     return parser.parse_args()
@@ -326,6 +326,7 @@ def plot_tsne_splits(
     class_ids=None,
     id_to_name: dict = None,
     condition_names: dict = None,
+    set_names: dict = None,
     title_fontsize: int = 18,
     legend_fontsize: int = 15,
     subplot_title_fontsize: int = 15,
@@ -357,6 +358,15 @@ def plot_tsne_splits(
         legend_handles = []
         for subj_id in subj_ids:
             legend_handles.append(Patch(facecolor=cmap(subj_to_idx[subj_id]), edgecolor="none", label=f"subj{subj_id}"))
+    elif color_mode == "set":
+        set_ids = sorted({int(v) for split_name in SPLITS for v in split_data[split_name]["y_set"]})
+        cmap = plt.get_cmap("tab10", max(2, len(set_ids)))
+        set_to_idx = {set_id: i for i, set_id in enumerate(set_ids)}
+        norm = BoundaryNorm(np.arange(-0.5, len(set_ids) + 0.5, 1.0), cmap.N)
+        legend_handles = []
+        for set_id in set_ids:
+            set_label = set_names.get(set_id, f"set_{set_id}") if set_names else f"set_{set_id}"
+            legend_handles.append(Patch(facecolor=cmap(set_to_idx[set_id]), edgecolor="none", label=set_label))
     else:
         raise ValueError(f"Unsupported color_mode={color_mode}")
 
@@ -383,6 +393,8 @@ def plot_tsne_splits(
             y_plot = split_data[split_name]["y_color"]
         elif color_mode == "condition":
             y_plot = np.asarray([cond_to_idx[int(v)] for v in split_data[split_name]["y_condition"]], dtype=np.int32)
+        elif color_mode == "set":
+            y_plot = np.asarray([set_to_idx[int(v)] for v in split_data[split_name]["y_set"]], dtype=np.int32)
         else:
             y_plot = np.asarray([subj_to_idx[int(v)] for v in split_data[split_name]["y_subject"]], dtype=np.int32)
 
@@ -558,7 +570,7 @@ def save_class_condition_counts_csv(
     counts_df.to_csv(out_path)
 
 
-def process_source(eeg_source_dir, output_dir, args, id_to_name):
+def process_source(eeg_source_dir, output_dir, args, id_to_name, imagined_collector=None, set_index=None):
     feature_label = args.feature_label
     tsne_title_fontsize = 20
     tsne_legend_fontsize = 11
@@ -707,12 +719,23 @@ def process_source(eeg_source_dir, output_dir, args, id_to_name):
                 )
 
 
+        if imagined_collector is not None and task_name == "imagined_speech" and set_index is not None:
+            for split_name in SPLITS:
+                sd = split_data[split_name]
+                if sd["x"].shape[0] == 0:
+                    continue
+                imagined_collector[split_name]["x_parts"].append(sd["x"])
+                imagined_collector[split_name]["y_parts"].append(sd["y"])
+                imagined_collector[split_name]["y_subject_parts"].append(sd["y_subject"])
+                imagined_collector[split_name]["y_set_parts"].append(np.full(sd["y"].shape, set_index, dtype=np.int32))
+                imagined_collector[split_name]["files"].extend(sd["files"])
+
         tsne_file = os.path.join(output_dir, f"tsne_{task_name}_by_split.png")
         plot_tsne_splits(
             split_data=split_data,
             out_path=tsne_file,
             title=f"{feature_label} visualized with t-SNE {task_name} by split - Subject " + ", ".join(str(s) for s in args.subject_id),
-            color_mode="event",
+            color_mode="subject",
             seed=args.seed,
             class_ids=class_ids,
             id_to_name=id_to_name,
@@ -840,8 +863,8 @@ def process_source(eeg_source_dir, output_dir, args, id_to_name):
 
 def main():
     args = parse_args()
-    id_to_name = load_event_names(args.events_codes)
-    print(f"Loaded {len(id_to_name)} event names from {args.events_codes}")
+    class_names = load_event_names(args.events_codes)
+    print(f"Loaded {len(class_names)} event names from {args.events_codes}")
 
     base_output_dir = args.output_dir if args.output_dir else args.eeg_source_dir
     set_dirs = sorted(
@@ -851,17 +874,74 @@ def main():
 
     if not set_dirs:
         # eeg-source-dir already points to a single set (or non-set) folder.
-        process_source(args.eeg_source_dir, base_output_dir, args, id_to_name)
+        process_source(args.eeg_source_dir, base_output_dir, args, class_names)
         return
 
-    for set_name in set_dirs:
+    imagined_collector = {
+        split_name: {"x_parts": [], "y_parts": [], "y_subject_parts": [], "y_set_parts": [], "files": []}
+        for split_name in SPLITS
+    }
+    set_names = {}
+
+    for set_index, set_name in enumerate(set_dirs):
         print(f"=== Processing {set_name} ===")
+        set_names[set_index] = set_name
         process_source(
             os.path.join(args.eeg_source_dir, set_name),
             os.path.join(base_output_dir, set_name),
             args,
-            id_to_name,
+            class_names,
+            imagined_collector=imagined_collector,
+            set_index=set_index,
         )
+
+    imagined_ready = {
+        split_name: {
+            "x": np.vstack(imagined_collector[split_name]["x_parts"]) if imagined_collector[split_name]["x_parts"] else np.zeros((0, 0), dtype=np.float64),
+            "y": np.concatenate(imagined_collector[split_name]["y_parts"]) if imagined_collector[split_name]["y_parts"] else np.zeros((0,), dtype=np.int32),
+            "y_subject": np.concatenate(imagined_collector[split_name]["y_subject_parts"]) if imagined_collector[split_name]["y_subject_parts"] else np.zeros((0,), dtype=np.int32),
+            "y_set": np.concatenate(imagined_collector[split_name]["y_set_parts"]) if imagined_collector[split_name]["y_set_parts"] else np.zeros((0,), dtype=np.int32),
+            "files": imagined_collector[split_name]["files"],
+        }
+        for split_name in SPLITS
+    }
+
+    imagined_class_ids = sorted({int(c) for split_name in SPLITS for c in imagined_ready[split_name]["y"]})
+    imagined_class_to_idx = {class_id: idx for idx, class_id in enumerate(imagined_class_ids)}
+    for split_name in SPLITS:
+        imagined_ready[split_name]["y_color"] = np.asarray(
+            [imagined_class_to_idx[int(c)] for c in imagined_ready[split_name]["y"]], dtype=np.int32
+        )
+
+    if any(imagined_ready[split_name]["x"].shape[0] > 0 for split_name in SPLITS):
+        imagined_all_sets_path = os.path.join(base_output_dir, "tsne_imagined_speech_all_sets_by_subject.png")
+        imagined_all_sets_path1 = os.path.join(base_output_dir, "tsne_imagined_speech_all_sets_by_set.png")
+        imagined_all_sets_path2 = os.path.join(base_output_dir, "tsne_imagined_speech_all_sets_by_class.png")
+        plot_tsne_splits(
+            split_data=imagined_ready,
+            out_path=imagined_all_sets_path,
+            title=f"{args.feature_label} with t-SNE for imagined_speech across all sets (colored by subject) - Subject " + ", ".join(str(s) for s in args.subject_id),
+            color_mode="subject",
+            seed=args.seed,
+            set_names=set_names,
+        )
+        plot_tsne_splits(
+                    split_data=imagined_ready,
+                    out_path=imagined_all_sets_path1,
+                    title=f"{args.feature_label} with t-SNE for imagined_speech across all sets (colored by set) - Subject " + ", ".join(str(s) for s in args.subject_id),
+                    color_mode="set",
+                    seed=args.seed,
+                    set_names=set_names,
+                )
+        plot_tsne_splits(
+                            split_data=imagined_ready,
+                            out_path=imagined_all_sets_path2,
+                            title=f"{args.feature_label} with t-SNE for imagined_speech across all sets (colored by class) - Subject " + ", ".join(str(s) for s in args.subject_id),
+                            color_mode="event",
+                            seed=args.seed,
+                            class_ids=imagined_class_ids,
+                            id_to_name=class_names,
+                        )
 
 
 if __name__ == "__main__":

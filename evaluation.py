@@ -16,11 +16,11 @@ from sklearn.manifold import TSNE
 import json
 import sys
 from types import SimpleNamespace
-
+from utils import load_wavs, _extract_class_code, natural_key, load_log_mel_csvs
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-GENERATED_DIR = os.path.join(PROJECT_ROOT, "inference22kHz_3subs1618_bestep517_64glits")
+GENERATED_DIR = os.path.join(PROJECT_ROOT, "inference22kHz_3subs1618_ep475")
 EVENTS_CSV = os.path.join(PROJECT_ROOT, "events_codes.csv")
 AUDIODATA_DIR = os.path.join(PROJECT_ROOT, "audiodata", "twos_22050")
 ORIGINAL_MELS = os.path.join(PROJECT_ROOT, "audiodata", "logmel22")
@@ -117,41 +117,7 @@ def _resolve_generated_subject_dirs(generated_root: str) -> List[dict]:
     )
 
 
-def natural_key(name):
-    m = re.search(r"(\d+)", name)
-    return (int(m.group(1)), name) if m else (10**9, name)
-
-
-
-def load_wavs(wav_dir: str):
-    wav_names = sorted(
-        [f for f in os.listdir(wav_dir) if f.lower().endswith(".wav")],
-        key=natural_key,
-    )
-    if not wav_names:
-        raise RuntimeError(f"No WAV files found in {wav_dir}")
-    waveforms = []
-    for wav_name in wav_names:
-        waveform, _ = librosa.load(os.path.join(wav_dir, wav_name), sr=SR, mono=True)
-        waveforms.append(waveform)
-        print(f"Loaded: {wav_name} ({len(waveform)/SR:.2f}s)")
-    print(f"\nLoaded {len(waveforms)} files from: {wav_dir}")
-    return wav_names, waveforms
-
-
-def _extract_class_code(name: str) -> int:
-    """Extract class code from file names like label61, audio61, etc."""
-    match = re.search(r"(?:label|audio)(\d+)", name, flags=re.IGNORECASE)
-    if match:
-        return int(match.group(1))
-
-    fallback = re.search(r"(\d+)", name)
-    if not fallback:
-        raise ValueError(f"Could not extract class code from file name: {name}")
-    return int(fallback.group(1))
-
-
-def _to_mono_float32(wav: np.ndarray) -> np.ndarray:
+def _tofloat32(wav: np.ndarray) -> np.ndarray:
     wav = np.asarray(wav)
     if wav.ndim == 2:
         wav = wav.mean(axis=1)
@@ -280,7 +246,7 @@ def _write_metric_summary_csv(rows: List[dict], metric_key: str, out_csv_path: s
         metric_key,
     ]
 
-    # Keep any additional per-row metrics (e.g., CER ground truth) in the output CSV.
+    # Keep all additional per-row metrics (e.g., CER ground truth) in the output CSV.
     for row in rows:
         for key in row.keys():
             if key not in fieldnames:
@@ -485,8 +451,13 @@ def compute_pesq_paired_rows(
         ref_wav, ref_sr = sf.read(os.path.join(original_wav_dir, row["reference_wav"]))
         gen_wav, gen_sr = sf.read(os.path.join(generated_wav_dir, row["generated_wav"]))
 
-        ref_wav = _to_mono_float32(ref_wav)
-        gen_wav = _to_mono_float32(gen_wav)
+        # if ref_wav.ndim == 2:
+        #         ref_wav = ref_wav.mean(axis=1)
+        # if gen_wav.ndim == 2:
+        #         gen_wav = gen_wav.mean(axis=1)
+
+        ref_wav = ref_wav.astype(np.float32)
+        gen_wav = gen_wav.astype(np.float32)
 
         if int(ref_sr) != int(target_sr):
             ref_wav = librosa.resample(ref_wav, orig_sr=int(ref_sr), target_sr=int(target_sr))
@@ -582,130 +553,6 @@ def compute_cer_paired_rows(
 
     return out_rows
 
-
-def load_log_mel_csvs(csv_dir: str) -> tuple:
-    """Load existing log-mel CSV files and stack them into [N, N_MELS, T]."""
-    csv_names = sorted(
-        [f for f in os.listdir(csv_dir) if f.lower().endswith("_logmel.csv")],
-        key=natural_key,
-    )
-    if not csv_names:
-        raise RuntimeError(f"No log-mel CSV files found in {csv_dir}")
-
-    mel_list = []
-    expected_shape = None
-    for csv_name in csv_names:
-        csv_path = os.path.join(csv_dir, csv_name)
-        log_mel = np.loadtxt(csv_path, delimiter=",", dtype=np.float32)
-        log_mel = np.atleast_2d(log_mel)
-        if log_mel.shape[0] > 1:
-            expected_index = np.arange(log_mel.shape[1], dtype=np.float32)
-            if np.allclose(log_mel[0], expected_index, rtol=0.0, atol=1e-6):
-                log_mel = log_mel[1:]
-
-        if expected_shape is None:
-            expected_shape = log_mel.shape
-        elif log_mel.shape != expected_shape:
-            raise ValueError(
-                f"Inconsistent log-mel shape for {csv_name}: {log_mel.shape}, expected {expected_shape}"
-            )
-
-        mel_list.append(log_mel)
-        print(f"Loaded: {csv_name} (shape={log_mel.shape})")
-
-    mel_arr = np.stack(mel_list, axis=0)
-    print(f"\nLoaded {len(mel_arr)} log-mel CSV files from: {csv_dir}")
-    print(f"Stacked log-mel array shape: {mel_arr.shape}")
-    return csv_names, mel_arr
-
-
-def compute_kmeans_wcss_curve(
-    representations: np.ndarray,
-    k_min: int = ELBOW_K_MIN,
-    k_max: int = ELBOW_K_MAX,
-    random_state: int = 42,
-) -> tuple:
-    """Run KMeans for each K in [k_min, k_max] and return K values with WCSS."""
-
-    n_samples = representations.shape[0]
-    upper_k = min(k_max, n_samples)
-    if k_min > upper_k:
-        raise ValueError(
-            f"Invalid K range [{k_min}, {k_max}] for {n_samples} samples; maximum valid K is {upper_k}"
-        )
-
-    flat_representations = representations.reshape(n_samples, -1)
-    k_values = list(range(k_min, upper_k + 1))
-    wcss_values = []
-
-    for k in k_values:
-        model = KMeans(n_clusters=k, n_init=40, random_state=random_state)
-        model.fit(flat_representations)
-        wcss = float(model.inertia_)
-        wcss = np.sqrt(wcss)
-        wcss_values.append(wcss)
-        print(f"K={k:2d} -> WCSS={wcss:.4f}")
-
-    return np.array(k_values, dtype=np.int32), np.array(wcss_values, dtype=np.float32)
-
-
-def plot_wcss_elbow(k_values: np.ndarray, wcss_values: np.ndarray, out_path: str):
-    """Plot WCSS against K for elbow-method inspection."""
-    if len(k_values) != len(wcss_values):
-        raise ValueError("k_values and wcss_values must have the same length")
-
-    fig, ax = plt.subplots(figsize=(9, 5.5))
-    ax.plot(k_values, wcss_values, marker="o", linewidth=2)
-    ax.set_title("K-means Elbow Plot on wav2vec embeddings")
-    ax.set_xlabel("Number of clusters (K)")
-    ax.set_ylabel("Within-Cluster Sum of Squares (WCSS)")
-    ax.set_xticks(k_values)
-    ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved WCSS elbow plot: {out_path}")
-
-
-def run_k_elbow_analysis(
-    csv_dir: str = None,
-    out_plot_path = str,
-    out_csv_path = str,
-    k_min: int = ELBOW_K_MIN,
-    k_max: int = ELBOW_K_MAX,
-    random_state: int = 42,
-    other_embeddings: bool = True,
-    arr: np.ndarray = None,
-) -> tuple:
-    """Load log-mel CSVs, compute WCSS across K, and save the elbow plot."""
-    if other_embeddings:
-        mel_arr = arr
-    else:
-        csv_names, mel_arr = load_log_mel_csvs(csv_dir)
-    
-    k_values, wcss_values = compute_kmeans_wcss_curve(
-        mel_arr,
-        k_min=k_min,
-        k_max=k_max,
-        random_state=random_state,
-    )
-
-   
-    out_plot_path = os.path.join(out_plot_path, f"wav2vec_kmeans_elbow_k{k_min}_to_{k_values[-1]}.png")
-    plot_wcss_elbow(k_values, wcss_values, out_plot_path)
-
-    
-    out_csv_path = os.path.join(out_csv_path, f"wav2vec_kmeans_wcss_k{k_min}_to_{k_values[-1]}.csv")
-    np.savetxt(
-        out_csv_path,
-        np.column_stack((k_values, wcss_values)),
-        delimiter=",",
-        header="k,wcss",
-        comments="",
-        fmt=["%d", "%.8f"],
-    )
-    print(f"Saved WCSS values: {out_csv_path}")
-    return k_values, wcss_values
 
 
 
@@ -805,66 +652,6 @@ def mcd_pairwise_matrix(mfcc_arr: np.ndarray, wav_names: list) -> np.ndarray:
 #     return sim
 
 
-# def ms_ssim_pairwise_matrix(
-#     mel_arr: np.ndarray,
-#     wav_names: list,
-#     win_size: int = 7,
-#     scales: int = 3,
-#     downsample_factor: int = 2,
-#     weights: tuple = (0.25, 0.25, 0.50),
-# ) -> np.ndarray:
-#     """Compute the full NxN pairwise MS-SSIM similarity matrix on log-mel spectrograms.
-
-#     Computes SSIM at `scales` resolution levels, each downsampled by `downsample_factor`,
-#     then combines them as a weighted sum with `weights` (must sum to 1).
-#     mel_arr: [N, N_MELS, T]
-#     """
-#     #from skimage.transform import rescale
-
-#     assert len(weights) == scales and abs(sum(weights) - 1.0) < 1e-6
-
-#     N = len(mel_arr)
-#     sim = np.zeros((N, N), dtype=np.float32)
-
-#     # Pre-build downsampled pyramids for each sample
-#     pyramids = []
-#     for i in range(N):
-#         pyramid = []
-#         img = mel_arr[i].astype(np.float64)
-#         for s in range(scales):
-#             pyramid.append(img)
-#             if s < scales - 1:
-#                 img = rescale(img, 1.0 / downsample_factor, anti_aliasing=True, channel_axis=None)
-#         pyramids.append(pyramid)
-
-#     for i in range(N):
-#         sim[i, i] = 1.0
-#         for j in range(i + 1, N):
-#             score = 0.0
-#             for s in range(scales):
-#                 a, b = pyramids[i][s], pyramids[j][s]
-#                 data_range = float(mel_arr.max() - mel_arr.min())
-#                 # Clamp win_size if image got too small after downsampling
-#                 effective_win = min(win_size, a.shape[0], a.shape[1])
-#                 if effective_win % 2 == 0:
-#                     effective_win -= 1
-#                 score += weights[s] * structural_similarity(
-#                     a, b, win_size=effective_win, data_range=data_range
-#                 )
-#             sim[i, j] = score
-#             sim[j, i] = score
-
-#     print(f"\nPairwise MS-SSIM matrix ({N}x{N}):")
-#     for i in range(N):
-#         row = sim[i].copy()
-#         row[i] = -np.inf
-#         nearest_idx = int(np.argmax(row))
-#         print(f"  {wav_names[i]:20s}  most similar: {wav_names[nearest_idx]:20s}  MS-SSIM={sim[i, nearest_idx]:.4f}")
-
-#     return sim
-
-
-
 def plot_mcd_matrix(dist_matrix: np.ndarray, wav_names: list, out_path: str, word_labels: dict = None):
     N = len(wav_names)
     if word_labels:
@@ -936,57 +723,6 @@ def paired_spectrograms_plot(
 
         plt.savefig(out_path, dpi=300)
         plt.close(fig)
-
-
-def plot_mel_kmeans_clusters(
-    mel_arr: np.ndarray,
-    cluster_ids: np.ndarray,
-    wav_names: list,
-    out_path: str,
-    perplexity: float = 10.0,
-    random_state: int = 42,
-):
-
-    n_samples = mel_arr.shape[0]
-    if n_samples < 3:
-        raise ValueError("Need at least 3 samples to run t-SNE reliably")
-
-    flat_mels = mel_arr.reshape(n_samples, -1)
-    effective_perplexity = min(perplexity, float(n_samples - 1))
-    points = TSNE(
-        n_components=2,
-        perplexity=effective_perplexity,
-        init="pca",
-        learning_rate="auto",
-        random_state=random_state,
-    ).fit_transform(flat_mels)
-
-    unique_clusters = sorted(np.unique(cluster_ids).tolist())
-    colors = plt.cm.get_cmap("tab10", max(len(unique_clusters), 1))
-
-    fig, ax = plt.subplots(figsize=(11, 8))
-    for index, cluster_id in enumerate(unique_clusters):
-        mask = cluster_ids == cluster_id
-        xy = points[mask]
-        ax.scatter(
-            xy[:, 0],
-            xy[:, 1],
-            s=35,
-            alpha=0.85,
-            color=colors(index),
-            label=f"Cluster {int(cluster_id)}",
-        )
-
-    ax.set_title("K-means Clusters of Log-Mel Spectrograms")
-    ax.set_xlabel("t-SNE 1")
-    ax.set_ylabel("t-SNE 2")
-    ax.grid(True, alpha=0.25)
-    ax.legend(title="Clusters", fontsize=8, title_fontsize=9, loc="best", frameon=True)
-
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved mel K-means cluster plot: {out_path}")
 
 
 def compute_wav2vec_embeddings(
@@ -1137,67 +873,6 @@ def plot_wav2vec_tsne(
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved wav2vec t-SNE plot: {out_path}")
-
-
-def cluster_by_distance_threshold(embeddings: np.ndarray, threshold: float = DIST_CLUSTER_THRESHOLD) -> np.ndarray:
-    """Cluster embeddings by graph connectivity where Euclidean distance <= threshold."""
-    n = embeddings.shape[0]
-    dmat = np.linalg.norm(embeddings[:, None, :] - embeddings[None, :, :], axis=2)
-    adjacency = dmat <= threshold
-
-    cluster_ids = -np.ones(n, dtype=np.int32)
-    cid = 0
-    for i in range(n):
-        if cluster_ids[i] != -1:
-            continue
-        stack = [i]
-        cluster_ids[i] = cid
-        while stack:
-            u = stack.pop()
-            neighbors = np.where(adjacency[u])[0]
-            for v in neighbors:
-                if cluster_ids[v] == -1:
-                    cluster_ids[v] = cid
-                    stack.append(v)
-        cid += 1
-    return cluster_ids
-
-
-def cluster_by_kmeans(embeddings: np.ndarray, n_clusters: int = MEL_KMEANS_CLUSTERS, random_state: int = 42) -> np.ndarray:
-    """Optional baseline: KMeans cluster IDs."""
-    return KMeans(n_clusters=n_clusters, n_init=40, random_state=random_state).fit_predict(embeddings)
-
-
-def cluster_log_mels_kmeans(mel_arr: np.ndarray, n_clusters: int = MEL_KMEANS_CLUSTERS, random_state: int = 42) -> np.ndarray:
-    """Apply K-means to flattened log-mel spectrograms."""
-    if mel_arr.ndim != 3:
-        raise ValueError(f"Expected mel_arr shape [N, N_MELS, T], got {mel_arr.shape}")
-
-    n_samples = mel_arr.shape[0]
-
-    effective_clusters = min(max(1, n_clusters), n_samples)
-    flat_mels = mel_arr.reshape(n_samples, -1)
-    return cluster_by_kmeans(flat_mels, n_clusters=effective_clusters, random_state=random_state)
-
-
-def save_cluster_report(
-    cluster_ids: np.ndarray,
-    wav_names: list,
-    out_path: str,
-    word_labels: dict = None,
-    method_name: str = "clusters",
-):
-    labels = [word_labels.get(natural_key(n)[0], os.path.splitext(n)[0]) for n in wav_names] if word_labels else wav_names
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write("wav_name,word_label,cluster_id\n")
-        for wav_name, label, cid in zip(wav_names, labels, cluster_ids):
-            f.write(f"{wav_name},{label},{int(cid)}\n")
-
-    unique, counts = np.unique(cluster_ids, return_counts=True)
-    print(f"\n{method_name}:")
-    for c, k in zip(unique, counts):
-        print(f"  cluster {int(c)}: {int(k)} samples")
-    print(f"Saved cluster report: {out_path}")
 
 
 if __name__ == "__main__":
