@@ -213,7 +213,6 @@ def return_rnd_splits(data):
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subjects", nargs="+", type=int, default=[15, 16, 17, 18, 19])
-    parser.add_argument("--eeg-data-dir", default="clean_data01-120Hz")
     parser.add_argument("--output-dir", default="eegdata3")
     parser.add_argument("--rawdata-output-dir", default="eegdata3_rawsplits")
     args = parser.parse_args()

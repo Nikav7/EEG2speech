@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import os
 import torch
 import glob
+import re
+import librosa
 from torch.nn.utils.parametrizations import weight_norm
 
 def audio_denorm(data):
@@ -28,7 +30,6 @@ def data_denorm(data, avg, std):
     data = torch.mul(data, std) + avg
        
     return data
-
 
 
 def plot_spectrogram(spectrogram):
@@ -83,4 +84,72 @@ def get_padding(kernel_size, dilation=1):
     return int((kernel_size*dilation - dilation)/2)
 
 
+
+####################
+
+def natural_key(name):
+    m = re.search(r"(\d+)", name)
+    return (int(m.group(1)), name) if m else (10**9, name)
+
+def load_wavs(wav_dir: str, sr: int):
+    wav_names = sorted(
+        [f for f in os.listdir(wav_dir) if f.lower().endswith(".wav")],
+        key=natural_key,
+    )
+    if not wav_names:
+        raise RuntimeError(f"No WAV files found in {wav_dir}")
+    waveforms = []
+    for wav_name in wav_names:
+        waveform, _ = librosa.load(os.path.join(wav_dir, wav_name), sr=sr, mono=True)
+        waveforms.append(waveform)
+        print(f"Loaded: {wav_name} ({len(waveform)/sr:.2f}s)")
+    print(f"\nLoaded {len(waveforms)} files from: {wav_dir}")
+    return wav_names, waveforms
+
+
+def _extract_class_code(name: str) -> int:
+    """Extract class code from file names like label61, audio61, etc."""
+    match = re.search(r"(?:label|audio)(\d+)", name, flags=re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+
+    fallback = re.search(r"(\d+)", name)
+    if not fallback:
+        raise ValueError(f"Could not extract class code from file name: {name}")
+    return int(fallback.group(1))
+
+def load_log_mel_csvs(csv_dir: str) -> tuple:
+    """Load existing log-mel CSV files and stack them into [N, N_MELS, T]."""
+    csv_names = sorted(
+        [f for f in os.listdir(csv_dir) if f.lower().endswith("_logmel.csv")],
+        key=natural_key,
+    )
+    if not csv_names:
+        raise RuntimeError(f"No log-mel CSV files found in {csv_dir}")
+
+    mel_list = []
+    expected_shape = None
+    for csv_name in csv_names:
+        csv_path = os.path.join(csv_dir, csv_name)
+        log_mel = np.loadtxt(csv_path, delimiter=",", dtype=np.float32)
+        log_mel = np.atleast_2d(log_mel)
+        if log_mel.shape[0] > 1:
+            expected_index = np.arange(log_mel.shape[1], dtype=np.float32)
+            if np.allclose(log_mel[0], expected_index, rtol=0.0, atol=1e-6):
+                log_mel = log_mel[1:]
+
+        if expected_shape is None:
+            expected_shape = log_mel.shape
+        elif log_mel.shape != expected_shape:
+            raise ValueError(
+                f"Inconsistent log-mel shape for {csv_name}: {log_mel.shape}, expected {expected_shape}"
+            )
+
+        mel_list.append(log_mel)
+        print(f"Loaded: {csv_name} (shape={log_mel.shape})")
+
+    mel_arr = np.stack(mel_list, axis=0)
+    print(f"\nLoaded {len(mel_arr)} log-mel CSV files from: {csv_dir}")
+    print(f"Stacked log-mel array shape: {mel_arr.shape}")
+    return csv_names, mel_arr
 
