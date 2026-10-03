@@ -74,7 +74,7 @@ def reconstruct_signal_from_sources(mixing_matrix, sources):
 SUBJECT_NUM = [15,16,17,18,19]
 SESSION_NUM = [3,1,1,1,1]
 
-BASE_DATA_PATH = Path(r"C:\Users\hssn_\Desktop\RAWEEG\Veronica_DataThesis")
+BASE_DATA_PATH = Path(r"")
 
 
 def make_xdf_file_path(subject_num, session_num):

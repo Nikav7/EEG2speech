@@ -423,13 +423,11 @@ def run_inference(args: argparse.Namespace) -> None:
 					wav_1d = (wav_1d / peak) * float(args.peak_level)
 
 			
-			#target_samples = int(round(float(args.target_duration_s) * int(args.sample_rate)))
-			# if wav_1d.numel() < target_samples:
-			# 	wav_1d = F.pad(wav_1d, (0, target_samples - wav_1d.numel()))
-			# elif wav_1d.numel() > target_samples:
-			# 	wav_1d = wav_1d[:target_samples]
+			target_samples = int(round(float(2.0) * int(args.sample_rate)))
+			if wav_1d.numel() < target_samples:
+				wav_1d = F.pad(wav_1d, (0, target_samples - wav_1d.numel()))
+			else:  wav_1d = wav_1d[:target_samples]
 
-			#wav_1d = wav_1d[:target_samples]
 			wav_1d = wav_1d.detach().cpu()
 
 			stem = os.path.splitext(sample.file_name)[0].replace("epoch", "trial")
@@ -522,12 +520,7 @@ def parse_args() -> argparse.Namespace:
 		default=64,
 		help="Number of Griffin-Lim iterations",
 	)
-	# parser.add_argument(
-	# 	"--target-duration-s",
-	# 	type=float,
-	# 	default=2.0,
-	# 	help="output waveform duration in seconds",
-	# )
+
 	parser.add_argument(
 		"--normalize-audio",
 		type=int,

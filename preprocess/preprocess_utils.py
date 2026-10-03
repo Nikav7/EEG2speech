@@ -174,13 +174,14 @@ def make_split_indices(
 
     return SplitIndices(train=train_idx, test=test_idx, val=val_idx)
 
+## augmentation
 def _augment_split_(
     x_data: np.ndarray,
     y_dec: np.ndarray,
     *,
     num_class: int,
     target_per_class: int,
-    noise_std: float,
+    noise_std: float = 1e-6,
     rng: np.random.RandomState,
     extra_arrays: Dict[str, np.ndarray] | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, np.ndarray]]:
@@ -217,7 +218,7 @@ def _augment_split_(
     return x_out, y_out, extra_out
 
 def load_split_data(
-    data_dir: str = "eegdata_rawsplits/raw_pre_augmentation_6_sets_subtog15",
+    data_dir: str = "eegdata_rawsplits/",
     subject: int | None = None,
     condition: str = "imagined_speech",
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -425,6 +426,82 @@ def riemannian_embedding(X):
     X_emb = ts.fit_transform(covs)
     return covs, X_emb
 
+def extract_windowed_covariances(data, sfreq=125, win_ms=125, stride_ms=200, estimator='lwf'):
+    """
+    Extracts sliding window covariance matrices for EEG data.
+    
+    Parameters:
+        data: np.ndarray of shape (n_epochs, n_channels, n_times)
+    Returns:
+        covs: np.ndarray of shape (n_epochs, n_windows, n_channels, n_channels)
+    """
+    n_epochs, n_channels, n_times = data.shape
+    win_samples = int(sfreq * (win_ms / 1000.0))
+    stride_samples = int(sfreq * (stride_ms / 1000.0))
+    
+    # Calculate window start indices
+    starts = list(range(0, n_times - win_samples + 1, stride_samples))
+    n_windows = len(starts)
+    
+    cov_estimator = Covariances(estimator=estimator)
+    all_epoch_covs = []
+    
+    for ep in data:
+        # Extract slices: (n_windows, n_channels, win_samples)
+        windows = np.array([ep[:, s:s + win_samples] for s in starts])
+        # Compute SPD matrices per window -> (n_windows, n_channels, n_channels)
+        win_covs = cov_estimator.fit_transform(windows)
+        all_epoch_covs.append(win_covs)
+        
+    return np.array(all_epoch_covs) # (n_epochs, n_windows, C, C)
+
+def compute_riemannian_embeddings(
+    epochs_split,
+    output_dir='eegdata_riemannian_windowed',
+    sfreq=250,
+    win_ms=250,
+    stride_ms=200
+):
+    """
+    Computes windowed tangent-space embeddings fitting the Riemannian Mean only on the training set to prevent data leakage.
+    Parameters:
+        epochs_split: dict with keys 'train', 'val', 'test', containing epoch objects or dicts.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    embeddings = {}
+
+    covs_split = {}
+    for split in ['train', 'val', 'test']:
+        if split in epochs_split:
+            split_obj = epochs_split[split]
+            data = split_obj.get_data() if hasattr(split_obj, 'get_data') else np.asarray(split_obj) # (n_epochs, C, T)
+            covs_split[split] = extract_windowed_covariances(
+                data, sfreq=sfreq, win_ms=win_ms, stride_ms=stride_ms
+            )
+
+    # Riemannian Mean on Train
+    # Reshape (N_train, N_win, C, C) -> (N_train * N_win, C, C) for mean estimation
+    train_covs_flat = covs_split['train'].reshape(-1, covs_split['train'].shape[2], covs_split['train'].shape[3])
+    ref_mean = mean_riemann(train_covs_flat)
+    
+    np.savetxt(os.path.join(output_dir, 'train_riemannian_reference_mean.csv'), ref_mean, delimiter=',')
+
+    # Project all splits using train ref mean
+    for split, covs in covs_split.items():
+        n_epochs, n_windows, C, _ = covs.shape
+        split_embeddings = []
+        
+        for ep_cov in covs: # ep_cov shape: (n_windows, C, C)
+            # windows to tangent space using train ref mean
+            # tangent_space outputs (n_windows, C*(C+1)//2)
+            ts_windows = tangent_space(ep_cov, Cref=ref_mean)
+            split_embeddings.append(ts_windows)
+            
+        # reshape to (n_epochs, n_windows, feature_dim)
+        embeddings[split] = np.array(split_embeddings)
+        print(f"[{split.upper()}] Processed {n_epochs} epochs -> Embeddings shape: {embeddings[split].shape}")
+
+    return embeddings, ref_mean
 
 def rndm_nonov_splits(items, chunk_size=13):
     return [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]

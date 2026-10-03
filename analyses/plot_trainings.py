@@ -17,7 +17,7 @@ def add_min_val_vlines(val_series, epochs_series, n=10, color='blue', min_epoch=
     for x in epochs_series.loc[best_idx]:
         plt.axvline(x=x, color=color, linestyle='--', alpha=0.5)
 
-data_path = 'TrainResult22kHz_4subs16171819/subj16-17-18-19/imagined_speech/logs/metrics.csv'
+data_path = 'TrainResult22kHz_4subs16171819/subj16-17-18/imagined_speech/logs/metrics.csv'
 path_parts = os.path.normpath(data_path).split(os.sep)
 output_prefix = path_parts[0] if len(path_parts) > 1 else os.path.splitext(os.path.basename(data_path))[0]
 

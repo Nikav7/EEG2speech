@@ -18,7 +18,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from EEGvectorembeddingCSP import save_splits_to_csv
-from preprocess_utils import load_split_data, proc_multicsp_train, svm_score, _segment_variance_log, apply_linear_derivation
+from preprocess_utils import _augment_split_, extract_windowed_covariances, load_split_data, proc_multicsp_train, riemannian_embedding, svm_score, _segment_variance_log, apply_linear_derivation, riemannian_embedding, compute_riemannian_embeddings
 
 
 # Data
@@ -89,7 +89,7 @@ def CSP_training(
 
 
     if debug_csp:
-        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+        cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
         cv_fold_eigvals = []
         cv_fold_accuracy = []
 
@@ -213,13 +213,13 @@ def return_rnd_splits(data):
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subjects", nargs="+", type=int, default=[15, 16, 17, 18, 19])
-    parser.add_argument("--output-dir", default="eegdata3")
-    parser.add_argument("--rawdata-output-dir", default="eegdata3_rawsplits")
+    parser.add_argument("--output-dir", default="eegdata_persub")
+    parser.add_argument("--rawdata-dir", default="eegdata_rawsplits")
     args = parser.parse_args()
 
-    raw_pre_aug_dir = os.path.join(args.rawdata_output_dir, "raw_pre_augmentation")
-    raw_post_aug_dir = os.path.join(args.rawdata_output_dir, "raw_post_augmentation_no_csp")
-    csp_post_aug_dir = os.path.join(args.output_dir, "csp_post_augmentation_cls1-13")
+    #raw_pre_aug_dir = os.path.join(args.rawdata_output_dir, "raw_pre_augmentation")
+    #raw_post_aug_dir = os.path.join(args.rawdata_output_dir, "raw_post_augmentation_no_csp")
+    csp_post_aug_dir = os.path.join(args.output_dir, "csp_aug20_rnd1")
 
     #CSP params and others
     numcsp = 4
@@ -229,8 +229,9 @@ def main() -> None:
     seed = 1
     val_ratio = 0.2
     test_ratio = 0.1
-
-    eeg_splits = "eegdata_rawsplits/raw_pre_augmentation_6_sets_subtog15"
+    use_augmentation = True
+    augment_target_per_class = 9
+    eeg_splits = args.rawdata_dir
 
     csp_class_seed = 3
 
@@ -239,28 +240,39 @@ def main() -> None:
     
 
     for subject_id in args.subjects:
-        # raw_all, markers_all, _ = load_data([subject_id], data_dir=args.eeg_data_dir)
+        # raw_all, markers_all, _ = load_data([subject_id], data_dir=args.rawdata_dir)
         # if not raw_all:
         #     continue
         
-        x_tr_im, y_tr_im, idx_tr_im, x_val_im, y_val_im, idx_val_im, x_ts_im, y_ts_im, idx_ts_im = load_split_data(eeg_splits, subject_id, condition="imagined_speech", return_indices=True)
-        x_tr_at, y_tr_at, idx_tr_at, x_val_at, y_val_at, idx_val_at, x_ts_at, y_ts_at, idx_ts_at = load_split_data(eeg_splits, subject_id, condition="attempted_speech", return_indices=True)
-        x_tr_li, y_tr_li, idx_tr_li, x_val_li, y_val_li, idx_val_li, x_ts_li, y_ts_li, idx_ts_li = load_split_data(eeg_splits, subject_id, condition="listening", return_indices=True)
-        
+        x_tr_im, y_tr_im, x_val_im, y_val_im, x_ts_im, y_ts_im, idx_tr_im, idx_val_im, idx_ts_im = load_split_data(eeg_splits, subject_id, condition="imagined_speech")
+        x_tr_at, y_tr_at, x_val_at, y_val_at, x_ts_at, y_ts_at, idx_tr_at, idx_val_at, idx_ts_at = load_split_data(eeg_splits, subject_id, condition="attempted_speech")
+        x_tr_li, y_tr_li, x_val_li, y_val_li, x_ts_li, y_ts_li, idx_tr_li, idx_val_li, idx_ts_li = load_split_data(eeg_splits, subject_id, condition="listening")
 
-        common_classes = np.arange(1, label_num_class + 1)
+
+        common_classes = np.unique(x_tr_im)
+         # Independent Augmentation for Training Sets (Listening is NOT augmented or used in CSP training)
+        rng = np.random.RandomState(seed)
+        if use_augmentation:
+                x_tr_im_aug, y_tr_im_aug, extra_im = _augment_split_(x_tr_im, y_tr_im, num_class=label_num_class, target_per_class=augment_target_per_class, noise_std=1e-6, rng=rng, extra_arrays={"subj": subj_tr_im, "idx": idx_tr_im})
+                subj_tr_im, idx_tr_im = extra_im["subj"], extra_im["idx"]
+                x_tr_at_aug, y_tr_at_aug, extra_at = _augment_split_(x_tr_at, y_tr_at, num_class=label_num_class, target_per_class=augment_target_per_class, noise_std=1e-6, rng=rng, extra_arrays={"subj": subj_tr_at, "idx": idx_tr_at})
+                subj_tr_at, idx_tr_at = extra_at["subj"], extra_at["idx"]
+
+
 
         # rng_ref = np.random.RandomState(csp_class_seed)
         # csp_reference_original_classes = np.sort(
         #         rng_ref.choice(common_classes, size=num_class_csp, replace=False)
         #     )
-        csp_reference_original_classes = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
-        #csp_reference_original_classes = np.array([1, 5, 10, 11, 13, 19, 29, 32, 35, 56, 64, 66, 74]) #rnd1classes
-        print(f"CSP reference original classes (seed={csp_class_seed}, randomly selected {num_class_csp}): {csp_reference_original_classes}")
+        #csp_reference_original_classes = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
+        csp_reference_original_classes = np.array([1, 5, 10, 11, 13, 19, 29, 32, 35, 56, 64, 66, 74]) #rnd1classes
+        print(f"CSP reference original classes (selected {num_class_csp}): {csp_reference_original_classes}")
+
+        
 
         out = CSP_training(
-            x_imagined=x_tr_im, y_imagined=y_tr_im,
-            x_attempted=x_tr_at, y_attempted=y_tr_at,
+            x_imagined=x_tr_im_aug, y_imagined=y_tr_im_aug,
+            x_attempted=x_tr_at_aug, y_attempted=y_tr_at_aug,
             x_listening=x_tr_li, y_listening=y_tr_li,
             x_val_im=x_val_im, y_val_im=y_val_im,
             x_val_at=x_val_at, y_val_at=y_val_at,
@@ -330,6 +342,10 @@ def main() -> None:
 
     save_csp_metadata("csp_metadata", all_subject_metadata, csp_post_aug_dir)
     save_csp_metadata("csp_fold_metadata", folds_metadata, csp_post_aug_dir)
+
+    # Riemannian embeddings for all subjects
+    
+    
 
 if __name__ == "__main__":
     main()

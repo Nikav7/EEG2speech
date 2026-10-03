@@ -12,6 +12,7 @@ import torch
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
 #from skimage.metrics import structural_similarity
+from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 
 import json
 import sys
@@ -32,7 +33,7 @@ FMIN = 20.0
 FMAX = SR / 2.0
 N_MFCC = 40
 W2V_MODEL_NAME = "facebook/wav2vec2-base-960h"
-WHISPER_MODEL_NAME = "openai/whisper-base"
+WHISPER_MODEL_NAME = "openai/whisper-base" #openai/whisper-base
 HUBERT_MODEL_NAME = "facebook/hubert-large-ls960-ft"
 W2V_FT_PATH = os.path.join(PROJECT_ROOT, "wav2vec2_finetuned")
 RUN_W2V_TSNE = True
@@ -247,7 +248,7 @@ def _write_metric_summary_csv(rows: List[dict], metric_key: str, out_csv_path: s
         metric_key,
     ]
 
-    # Keep all additional per-row metrics (e.g., CER ground truth) in the output CSV.
+    # Keep additional per-row metrics (e.g., CER ground truth) in the output CSV.
     for row in rows:
         for key in row.keys():
             if key not in fieldnames:
@@ -303,8 +304,8 @@ def _write_cumulative_subject_summary(rows: List[dict], out_csv_path: str) -> No
     metric_keys = [
         "mcd",
         "pesq",
-        "cer_wav2vec_base",
-        "cer_gt_wav2vec_base",
+        "cer_whisper",
+        "cer_gt_whisper",
         "cer_wav2vec_finetuned",
         "cer_gt_wav2vec_finetuned",
         "cer_hubert",
@@ -482,25 +483,36 @@ def compute_pesq_paired_rows(
         raise RuntimeError("No valid PESQ scores were computed")
     return out_rows
 
-
+def t_whisper(waveform, processor, model, device, sr):
+    feats = processor(waveform, sampling_rate=sr, return_tensors="pt").input_features.to(device=device, dtype=model.dtype)
+    ids = model.generate(feats, language="en", task="transcribe")
+    return processor.batch_decode(ids, skip_special_tokens=True)[0]
+    
 def compute_cer_paired_rows(
     paired_rows: List[dict],
     generated_wav_dir: str,
     original_wav_dir: str,
-    model_name: str = WHISPER_MODEL_NAME,
+    model_name: str = W2V_MODEL_NAME,
     finetuned_path: str = W2V_FT_PATH,
     target_sr: int = CER_TARGET_SR,
 ) -> List[dict]:
-    transformers_mod = importlib.import_module("transformers")
-    AutoModelForCTC = getattr(transformers_mod, "AutoModelForCTC")
-    AutoProcessor = getattr(transformers_mod, "AutoProcessor")
 
     source = finetuned_path if finetuned_path and os.path.isdir(finetuned_path) else model_name
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    transformers_mod = importlib.import_module("transformers")
+    AutoModelForCTC = getattr(transformers_mod, "AutoModelForCTC")
+    AutoProcessor = getattr(transformers_mod, "AutoProcessor")
+
     processor = AutoProcessor.from_pretrained(source)
-    model = AutoModelForCTC.from_pretrained(source).to(device)
-    model.eval()
+
+    if model_name == WHISPER_MODEL_NAME:
+        #processor = AutoProcessor.from_pretrained(source)
+        model = AutoModelForSpeechSeq2Seq.from_pretrained(source).to(device)
+        model.eval()
+    else:
+        model = AutoModelForCTC.from_pretrained(source).to(device)
+        model.eval()
 
     out_rows: List[dict] = []
     with torch.inference_mode():
@@ -510,6 +522,9 @@ def compute_cer_paired_rows(
 
             generated_waveform, generated_sr = librosa.load(generated_wav_path, sr=None, mono=True)
             reference_waveform, reference_sr = librosa.load(reference_wav_path, sr=None, mono=True)
+            print(generated_waveform.shape)
+            print(reference_waveform.shape)
+
             if int(generated_sr) != int(target_sr):
                 generated_waveform = librosa.resample(generated_waveform, orig_sr=int(generated_sr), target_sr=int(target_sr))
             if int(reference_sr) != int(target_sr):
@@ -521,23 +536,31 @@ def compute_cer_paired_rows(
                 return_tensors="pt",
                 padding=True,
             )
-            generated_values = generated_inputs.input_values.to(device)
-            generated_mask = generated_inputs.attention_mask.to(device) if "attention_mask" in generated_inputs else None
-            generated_logits = model(input_values=generated_values, attention_mask=generated_mask).logits
-            generated_pred_ids = torch.argmax(generated_logits, dim=-1)
-            generated_pred_text = processor.batch_decode(generated_pred_ids, skip_special_tokens=True)[0]
 
-            reference_inputs = processor(
-                reference_waveform,
-                sampling_rate=target_sr,
-                return_tensors="pt",
-                padding=True,
-            )
-            reference_values = reference_inputs.input_values.to(device)
-            reference_mask = reference_inputs.attention_mask.to(device) if "attention_mask" in reference_inputs else None
-            reference_logits = model(input_values=reference_values, attention_mask=reference_mask).logits
-            reference_pred_ids = torch.argmax(reference_logits, dim=-1)
-            reference_pred_text = processor.batch_decode(reference_pred_ids, skip_special_tokens=True)[0]
+            if model_name == WHISPER_MODEL_NAME:
+                #feats = processor(waveform, sampling_rate=sr, return_tensors="pt").input_features.to(device)
+                #ids = model.generate(feats, language="en", task="transcribe")
+                #  processor.batch_decode(ids, skip_special_tokens=True)[0]
+                generated_pred_text = t_whisper(generated_waveform, processor, model, device, target_sr)
+                reference_pred_text = t_whisper(reference_waveform, processor, model, device, target_sr)
+            else:
+                generated_values = generated_inputs.input_values.to(device)
+                generated_mask = generated_inputs.attention_mask.to(device) if "attention_mask" in generated_inputs else None
+                generated_logits = model(input_values=generated_values, attention_mask=generated_mask).logits
+                generated_pred_ids = torch.argmax(generated_logits, dim=-1)
+                generated_pred_text = processor.batch_decode(generated_pred_ids, skip_special_tokens=True)[0]
+
+                reference_inputs = processor(
+                    reference_waveform,
+                    sampling_rate=target_sr,
+                    return_tensors="pt",
+                    padding=True,
+                )
+                reference_values = reference_inputs.input_values.to(device)
+                reference_mask = reference_inputs.attention_mask.to(device) if "attention_mask" in reference_inputs else None
+                reference_logits = model(input_values=reference_values, attention_mask=reference_mask).logits
+                reference_pred_ids = torch.argmax(reference_logits, dim=-1)
+                reference_pred_text = processor.batch_decode(reference_pred_ids, skip_special_tokens=True)[0]
 
             cer_score = _character_error_rate(row["word"], generated_pred_text)
             cer_gt_score = _character_error_rate(row["word"], reference_pred_text)
@@ -984,7 +1007,7 @@ if __name__ == "__main__":
         _write_metric_summary_csv(
             cer_w2v_base_rows,
             "cer",
-            os.path.join(output_dir, "cer_whisper_base_summary.csv"),
+            os.path.join(output_dir, "cer_whisper_summary.csv"),
         )
 
         # 2) CER with wav2vec fine-tuned checkpoint
@@ -1052,8 +1075,8 @@ if __name__ == "__main__":
             [
                 ("mcd", mcd_rows, "mcd", True),
                 ("pesq", pesq_rows, "pesq", True),
-                ("cer_wav2vec_base", cer_w2v_base_rows, "cer", True),
-                ("cer_gt_wav2vec_base", cer_w2v_base_rows, "cer_gt", False),
+                ("cer_whisper", cer_w2v_base_rows, "cer", True),
+                ("cer_gt_whisper", cer_w2v_base_rows, "cer_gt", False),
                 ("cer_wav2vec_finetuned", cer_w2v_ft_rows, "cer", True),
                 ("cer_gt_wav2vec_finetuned", cer_w2v_ft_rows, "cer_gt", False),
                 ("cer_hubert", cer_hubert_rows, "cer", True),
@@ -1067,8 +1090,8 @@ if __name__ == "__main__":
                 "subject_id": subject_id,
                 "mcd": _format_mean_plus_std(mcd_rows, "mcd"),
                 "pesq": _format_mean_plus_std(pesq_rows, "pesq"),
-                "cer_wav2vec_base": _format_mean_plus_std(cer_w2v_base_rows, "cer"),
-                "cer_gt_wav2vec_base": _format_mean_plus_std(cer_w2v_base_rows, "cer_gt"),
+                "cer_whisper": _format_mean_plus_std(cer_w2v_base_rows, "cer"),
+                "cer_gt_whisper": _format_mean_plus_std(cer_w2v_base_rows, "cer_gt"),
                 "cer_wav2vec_finetuned": _format_mean_plus_std(cer_w2v_ft_rows, "cer"),
                 "cer_gt_wav2vec_finetuned": _format_mean_plus_std(cer_w2v_ft_rows, "cer_gt"),
                 "cer_hubert": _format_mean_plus_std(cer_hubert_rows, "cer"),

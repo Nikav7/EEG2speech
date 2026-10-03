@@ -150,11 +150,11 @@ class Generator(torch.nn.Module):
         input_was_4d = (x.dim() == 4)
         input_freq_bins = None
         input_time_steps = None
-        target_time_steps = int(getattr(self.h, 'out_time_steps', 85))
+        #target_time_steps = int(getattr(self.h, 'out_time_steps', 85))
         if input_was_4d:
             batch_size, spec_channels, freq_bins, time_steps = x.shape
             input_freq_bins = freq_bins
-            input_time_steps = time_steps
+            #input_time_steps = time_steps
             x = x.reshape(batch_size, spec_channels * freq_bins, time_steps)
 
         x = self.conv_pre(x)
@@ -194,13 +194,6 @@ class Generator(torch.nn.Module):
                     )
                 out_spec_channels = x.size(1) // out_freq_bins
             x = x.reshape(x.size(0), out_spec_channels, out_freq_bins, x.size(2))
-            if x.size(-1) != target_time_steps:
-                x = F.interpolate(
-                    x,
-                    size=(x.size(2), target_time_steps),
-                    mode='bilinear',
-                    align_corners=False,
-                )
 
         return x
 
