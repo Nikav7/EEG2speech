@@ -1190,10 +1190,10 @@ def main(args):
 
 if __name__ == '__main__':
 
-    dataDir = './eegdata/CSP_NOAUG_6_sets_subtog/set4'
+    dataDir = './eegdata/eegdata_togrnd1/csp_aug40_subtog_rnd1'
     audioDir = './audiodata/logmel22'
     audioWavDir = './audiodata/twos_22050'
-    logDir = './TrainResult22kHz_4subs16171819'
+    logDir = './TrainResult22kHz_3subs161718_CSP13rnd1_tog'
     
     parser = argparse.ArgumentParser(description='Hyperparams')
     parser.add_argument('--max_epochs', type=int, default=500)
@@ -1215,7 +1215,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug_batch_trace', type=int, choices=[0, 1], default=0, help='Print the last successful training stage for each batch')
     parser.add_argument('--debug_cuda_sync', type=int, choices=[0, 1], default=0, help='Synchronize CUDA after each debug stage to localize silent kernel failures')
     parser.add_argument('--debug_cuda_memory', type=int, choices=[0, 1], default=0, help='Print allocated and reserved CUDA memory at each debug stage')
-    parser.add_argument('--sub', nargs='+', type=int, default=[16, 17, 18, 19])
+    parser.add_argument('--sub', nargs='+', type=int, default=[16, 17, 18])
     parser.add_argument('--task', type=str, default='imagined_speech')
 
     parser.add_argument('--recon', type=str, default='Y_mel')

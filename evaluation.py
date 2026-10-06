@@ -11,6 +11,8 @@ import soundfile as sf
 import torch
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
+from fastdtw import fastdtw
+from scipy.spatial.distance import euclidean
 #from skimage.metrics import structural_similarity
 from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 
@@ -390,7 +392,7 @@ def compute_mcd_paired_rows(
 
         ref_mfcc = librosa.feature.mfcc(S=ref_mel, n_mfcc=n_mfcc).astype(np.float32)
         gen_mfcc = librosa.feature.mfcc(S=gen_mel, n_mfcc=n_mfcc).astype(np.float32)
-        mcd_score = float(mel_cepstral_distortion(ref_mfcc, gen_mfcc))
+        mcd_score = float(mel_cepstral_distortion_dtw(ref_mfcc, gen_mfcc))
 
         enriched = dict(row)
         enriched["mcd"] = mcd_score
@@ -400,39 +402,6 @@ def compute_mcd_paired_rows(
         )
     return out_rows
 
-
-def compute_and_save_mcd_matrix_from_pairs(
-    paired_rows: List[dict],
-    generated_mel_dir: str,
-    out_dir: str,
-    n_mfcc: int = N_MFCC,
-    word_labels: Dict[int, str] = None,
-) -> np.ndarray:
-    ordered_rows = sorted(paired_rows, key=lambda r: int(r["class_label"]))
-
-    mel_list = []
-    wav_names = []
-    for row in ordered_rows:
-        mel = _load_mel_csv_clean(os.path.join(generated_mel_dir, row["generated_mel"]))
-        mel_list.append(mel)
-        wav_names.append(row["generated_wav"])
-
-    mel_arr = np.stack(mel_list, axis=0)
-    mfcc_arr = compute_mfccs(mel_arr, n_mfcc=n_mfcc)
-    mcd_matrix = mcd_pairwise_matrix(mfcc_arr, wav_names)
-
-    os.makedirs(out_dir, exist_ok=True)
-    matrix_npy_path = os.path.join(out_dir, "mcd_pairwise.npy")
-    matrix_csv_path = os.path.join(out_dir, "mcd_pairwise.csv")
-    matrix_png_path = os.path.join(out_dir, "mcd_pairwise_names.png")
-
-    np.save(matrix_npy_path, mcd_matrix)
-    np.savetxt(matrix_csv_path, mcd_matrix, delimiter=",", fmt="%.6f")
-    plot_mcd_matrix(mcd_matrix, wav_names, matrix_png_path, word_labels=word_labels)
-
-    print(f"Saved MCD matrix NPY: {matrix_npy_path}")
-    print(f"Saved MCD matrix CSV: {matrix_csv_path}")
-    return mcd_matrix
 
 
 def compute_pesq_paired_rows(
@@ -602,18 +571,49 @@ def mel_cepstral_distortion(mfcc_ref: np.ndarray, mfcc_deg: np.ndarray) -> float
     """
     K = 10.0 / np.log(10.0)
 
-    def _mcd_single(ref, deg):  # [n_mfcc, T]
-        min_t = min(ref.shape[1], deg.shape[1])
-        diff = ref[1:, :min_t] - deg[1:, :min_t]  # exclude c0
-        return K * np.mean(np.sqrt(2.0 * np.sum(diff ** 2, axis=0)))
+    # def _mcd_single(ref, deg):  # [n_mfcc, T]
+    #     min_t = min(ref.shape[1], deg.shape[1])
+    #     diff = ref[1:, :min_t] - deg[1:, :min_t]  # exclude c0
+    #     return K * np.mean(np.sqrt(2.0 * np.sum(diff ** 2, axis=0)))
 
     if mfcc_ref.ndim == 2:
-        return float(_mcd_single(mfcc_ref, mfcc_deg))
+        min_t = min(mfcc_ref.shape[1], mfcc_deg.shape[1])
+        diff = mfcc_ref[1:, :min_t] - mfcc_deg[1:, :min_t]  # exclude c0
+        mcd = K * np.mean(np.sqrt(2.0 * np.sum(diff ** 2, axis=0)))
+        return float(mcd)
+        # return float(_mcd_single(mfcc_ref, mfcc_deg))
 
     # [N, n_mfcc, T] — return per-sample MCD array
-    scores = np.array([_mcd_single(mfcc_ref[i], mfcc_deg[i]) for i in range(len(mfcc_ref))])
+    scores = np.array([mel_cepstral_distortion_dtw(mfcc_ref[i], mfcc_deg[i]) for i in range(len(mfcc_ref))])
     print(f"MCD per sample: mean={scores.mean():.4f} dB, std={scores.std():.4f} dB")
     return scores
+
+
+def mel_cepstral_distortion_dtw(mfcc_ref: np.ndarray, mfcc_deg: np.ndarray) -> float:
+    """
+    mfcc_ref, mfcc_deg: [n_mfcc, T]
+    """
+    # Exclude c0 and transpose to shape [T, n_mfcc - 1] for vector distance calculation
+    ref_frames = mfcc_ref[1:, :].T
+    deg_frames = mfcc_deg[1:, :].T
+
+    # fastdtw aligns frame sequences along axis 0
+    _, path = fastdtw(ref_frames, deg_frames, dist=euclidean)
+
+    # Extract aligned frame pairs along warping path
+    ref_indices, deg_indices = zip(*path)
+    ref_aligned = ref_frames[list(ref_indices)]  # [P, n_mfcc - 1]
+    deg_aligned = deg_frames[list(deg_indices)]  # [P, n_mfcc - 1]
+
+    # Compute frame-wise euclidean distance
+    K = 10.0 / np.log(10.0)
+    diff = ref_aligned - deg_aligned  # [P, n_mfcc - 1]
+    
+    # Sum over coefficients, square root, then mean over path length P
+    frame_distances = np.sqrt(2.0 * np.sum(diff ** 2, axis=1))
+    mcd = K * np.mean(frame_distances)
+    
+    return float(mcd)
 
 
 def mcd_pairwise_matrix(mfcc_arr: np.ndarray, wav_names: list) -> np.ndarray:
@@ -643,6 +643,38 @@ def mcd_pairwise_matrix(mfcc_arr: np.ndarray, wav_names: list) -> np.ndarray:
 
     return dist
 
+def compute_and_save_mcd_matrix_from_pairs(
+    paired_rows: List[dict],
+    generated_mel_dir: str,
+    out_dir: str,
+    n_mfcc: int = N_MFCC,
+    word_labels: Dict[int, str] = None,
+) -> np.ndarray:
+    ordered_rows = sorted(paired_rows, key=lambda r: int(r["class_label"]))
+
+    mel_list = []
+    wav_names = []
+    for row in ordered_rows:
+        mel = _load_mel_csv_clean(os.path.join(generated_mel_dir, row["generated_mel"]))
+        mel_list.append(mel)
+        wav_names.append(row["generated_wav"])
+
+    mel_arr = np.stack(mel_list, axis=0)
+    mfcc_arr = compute_mfccs(mel_arr, n_mfcc=n_mfcc)
+    mcd_matrix = mcd_pairwise_matrix(mfcc_arr, wav_names)
+
+    os.makedirs(out_dir, exist_ok=True)
+    matrix_npy_path = os.path.join(out_dir, "mcd_pairwise.npy")
+    matrix_csv_path = os.path.join(out_dir, "mcd_pairwise.csv")
+    matrix_png_path = os.path.join(out_dir, "mcd_pairwise_names.png")
+
+    np.save(matrix_npy_path, mcd_matrix)
+    np.savetxt(matrix_csv_path, mcd_matrix, delimiter=",", fmt="%.6f")
+    plot_mcd_matrix(mcd_matrix, wav_names, matrix_png_path, word_labels=word_labels)
+
+    print(f"Saved MCD matrix NPY: {matrix_npy_path}")
+    print(f"Saved MCD matrix CSV: {matrix_csv_path}")
+    return mcd_matrix
 
 # def ssim_pairwise_matrix(mel_arr: np.ndarray, wav_names: list, win_size: int = 7) -> np.ndarray:
 #     """Compute the full NxN pairwise SSIM similarity matrix on log-mel spectrograms.
