@@ -2,24 +2,18 @@ import os
 import re
 import importlib
 import csv
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np
 import soundfile as sf
 import torch
-from sklearn.cluster import KMeans
-from sklearn.manifold import TSNE
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
-#from skimage.metrics import structural_similarity
-from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
+from transformers import AutoModelForSpeechSeq2Seq
 
-import json
-import sys
-from types import SimpleNamespace
-from utils import load_wavs, _extract_class_code, natural_key, load_log_mel_csvs
+from utils import _extract_class_code, natural_key
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -29,27 +23,21 @@ AUDIODATA_DIR = os.path.join(PROJECT_ROOT, "audiodata", "twos_22050")
 ORIGINAL_MELS = os.path.join(PROJECT_ROOT, "audiodata", "logmel22")
 
 SR = 22050
-
 N_MELS = 80
 FMIN = 20.0
 FMAX = SR / 2.0
 N_MFCC = 40
+
 W2V_MODEL_NAME = "facebook/wav2vec2-base-960h"
-WHISPER_MODEL_NAME = "openai/whisper-base" #openai/whisper-base
+WHISPER_MODEL_NAME = "openai/whisper-base"
 HUBERT_MODEL_NAME = "facebook/hubert-large-ls960-ft"
 W2V_FT_PATH = os.path.join(PROJECT_ROOT, "wav2vec2_finetuned")
-RUN_W2V_TSNE = True
-DIST_CLUSTER_THRESHOLD = 0.4  # for macro clusters
-MEL_KMEANS_CLUSTERS = 13
-ELBOW_K_MIN = 13
-ELBOW_K_MAX = 74
-RUN_PESQ = True
+
 CER_TARGET_SR = 16000
 
 
 def load_word_labels(csv_path: str) -> dict:
     """Return {audio_number: word_label} from events_codes.csv."""
-    import csv
     labels = {}
     with open(csv_path, newline="", encoding="utf-8") as f:
         for row in csv.reader(f):
@@ -64,12 +52,7 @@ def load_word_labels(csv_path: str) -> dict:
 
 
 def _resolve_generated_subject_dirs(generated_root: str) -> List[dict]:
-    """Return subject-specific generated wav/mel/output dirs.
-
-    Supports:
-    - New layout: <generated_root>/subjXX/wav and <generated_root>/subjXX/mel_csv
-    - Legacy layout: <generated_root>/ and <generated_root>/mel_csv
-    """
+    """Return subject-specific generated wav/mel/output dirs."""
     if not os.path.isdir(generated_root):
         raise FileNotFoundError(f"Generated inference directory not found: {generated_root}")
 
@@ -98,7 +81,7 @@ def _resolve_generated_subject_dirs(generated_root: str) -> List[dict]:
     if resolved:
         return resolved
 
-    # Backward-compatible single folder layout.
+    # single folder layout
     legacy_wavs = [f for f in os.listdir(generated_root) if f.lower().endswith(".wav")]
     legacy_mel_dir = os.path.join(generated_root, "mel_csv")
     legacy_mels = []
@@ -115,17 +98,7 @@ def _resolve_generated_subject_dirs(generated_root: str) -> List[dict]:
             }
         ]
 
-    raise RuntimeError(
-        "No generated subject outputs found. Expected subject folders at "
-        "<generated_root>/subjXX/{wav,mel_csv}"
-    )
-
-
-def _tofloat32(wav: np.ndarray) -> np.ndarray:
-    wav = np.asarray(wav)
-    if wav.ndim == 2:
-        wav = wav.mean(axis=1)
-    return wav.astype(np.float32)
+    raise RuntimeError("No generated subject outputs found.")
 
 
 def _normalize_text_for_cer(text: str) -> str:
@@ -169,6 +142,39 @@ def _load_mel_csv_clean(mel_csv_path: str) -> np.ndarray:
     return mel
 
 
+def dtw_align_spectrograms(ref_mel: np.ndarray, gen_mel: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Align gen_mel to ref_mel using fastdtw on un-normalized mel-spectrograms.
+    Returns:
+        ref_mel: [N_MELS, T_ref]
+        warped_gen_mel: [N_MELS, T_ref] (mapped onto ref_mel time frames)
+    """
+    # fastdtw aligns along dimension 0, so transpose to [T, N_MELS]
+    ref_frames = ref_mel.T
+    gen_frames = gen_mel.T
+
+    _, path = fastdtw(ref_frames, gen_frames, dist=euclidean)
+
+    # Construct frame map: map each frame of ref_mel to mean frame of aligned gen_mel
+    ref_to_gen_map = {}
+    for r_idx, g_idx in path:
+        ref_to_gen_map.setdefault(r_idx, []).append(g_idx)
+
+    warped_gen_frames = []
+    num_ref_frames = ref_mel.shape[1]
+
+    for r_idx in range(num_ref_frames):
+        if r_idx in ref_to_gen_map:
+            g_indices = ref_to_gen_map[r_idx]
+            mean_frame = np.mean(gen_frames[g_indices], axis=0)
+        else:
+            mean_frame = gen_frames[min(r_idx, gen_frames.shape[0] - 1)]
+        warped_gen_frames.append(mean_frame)
+
+    warped_gen_mel = np.array(warped_gen_frames).T  # back to [N_MELS, T_ref]
+    return ref_mel, warped_gen_mel
+
+
 def _build_paired_sample_rows(
     generated_wav_dir: str,
     original_wav_dir: str,
@@ -196,41 +202,64 @@ def _build_paired_sample_rows(
         key=natural_key,
     )
 
+    # Map class codes to original reference files
     original_wav_by_code = {_extract_class_code(name): name for name in original_wavs}
-    generated_mel_by_code = {_extract_class_code(name): name for name in generated_mels}
     original_mel_by_code = {_extract_class_code(name): name for name in original_mels}
+    
+    # Map exact trial prefix (e.g. "label008_trial0032") to generated mel files
+    generated_mel_by_prefix = {
+        os.path.splitext(f)[0].replace("_pred_mel", "").replace("_mel", ""): f 
+        for f in generated_mels
+    }
 
     pairs: List[dict] = []
-    for generated_wav in generated_wavs:
-        class_code = _extract_class_code(generated_wav)
+    for gen_wav in generated_wavs:
+        class_code = _extract_class_code(gen_wav)
+        wav_prefix = os.path.splitext(gen_wav)[0].replace("_pred", "").replace("_wav", "")
 
         ref_wav = original_wav_by_code.get(class_code)
-        gen_mel = generated_mel_by_code.get(class_code)
-        ref_mel = original_mel_by_code.get(class_code)
+        ref_mel_name = original_mel_by_code.get(class_code)
+        
+        # Try matching by prefix first, fallback to class code match
+        gen_mel_name = generated_mel_by_prefix.get(wav_prefix)
+        if gen_mel_name is None:
+            gen_mel_matches = [m for m in generated_mels if _extract_class_code(m) == class_code]
+            if gen_mel_matches:
+                gen_mel_name = gen_mel_matches[0]
 
-        if ref_wav is None:
-            print(f"[PAIR] Skip {generated_wav}: missing reference WAV for class {class_code}")
+        if ref_wav is None or gen_mel_name is None or ref_mel_name is None:
+            print(f"[PAIR SKIP] Could not pair {gen_wav} (class {class_code}). Missing ref/mel.")
             continue
-        if gen_mel is None:
-            print(f"[PAIR] Skip {generated_wav}: missing generated MEL for class {class_code}")
+
+        ref_mel_path = os.path.join(original_mel_dir, ref_mel_name)
+        gen_mel_path = os.path.join(generated_mel_dir, gen_mel_name)
+
+        if not os.path.exists(ref_mel_path) or not os.path.exists(gen_mel_path):
+            print(f"[FILE MISSING] Check path: {ref_mel_path} or {gen_mel_path}")
             continue
-        if ref_mel is None:
-            print(f"[PAIR] Skip {generated_wav}: missing reference MEL for class {class_code}")
-            continue
+
+        ref_mel = _load_mel_csv_clean(ref_mel_path)
+        raw_gen_mel = _load_mel_csv_clean(gen_mel_path)
+
+        # DTW alignment before evaluation
+        ref_mel_aligned, warped_gen_mel = dtw_align_spectrograms(ref_mel, raw_gen_mel)
 
         pairs.append(
             {
                 "class_label": int(class_code),
                 "word": word_labels.get(class_code, f"class{class_code}"),
-                "generated_wav": generated_wav,
+                "generated_wav": gen_wav,
                 "reference_wav": ref_wav,
-                "generated_mel": gen_mel,
-                "reference_mel": ref_mel,
+                "generated_mel": gen_mel_name,
+                "reference_mel": ref_mel_name,
+                "ref_mel_arr": ref_mel_aligned,
+                "gen_mel_arr": warped_gen_mel,
             }
         )
 
+    print(f"Successfully paired {len(pairs)} out of {len(generated_wavs)} samples.")
     if not pairs:
-        raise RuntimeError("No valid paired samples were found for evaluation")
+        raise RuntimeError("No valid paired samples were found for evaluation.")
 
     return pairs
 
@@ -250,10 +279,9 @@ def _write_metric_summary_csv(rows: List[dict], metric_key: str, out_csv_path: s
         metric_key,
     ]
 
-    # Keep additional per-row metrics (e.g., CER ground truth) in the output CSV.
     for row in rows:
         for key in row.keys():
-            if key not in fieldnames:
+            if key not in fieldnames and key not in ("ref_mel_arr", "gen_mel_arr"):
                 fieldnames.append(key)
 
     metric_values = [float(row[metric_key]) for row in rows]
@@ -276,7 +304,8 @@ def _write_metric_summary_csv(rows: List[dict], metric_key: str, out_csv_path: s
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
-            writer.writerow(row)
+            clean_row = {k: v for k, v in row.items() if k in fieldnames}
+            writer.writerow(clean_row)
         avg_row = {
             "class_label": "AVG",
             "word": "AVG",
@@ -294,7 +323,6 @@ def _write_metric_summary_csv(rows: List[dict], metric_key: str, out_csv_path: s
 
 
 def _format_mean_plus_std(rows: List[dict], metric_key: str) -> str:
-    """Format a metric's per-sample mean and population standard deviation."""
     if not rows:
         return "N/A"
     values = np.asarray([float(row[metric_key]) for row in rows], dtype=np.float64)
@@ -302,12 +330,12 @@ def _format_mean_plus_std(rows: List[dict], metric_key: str) -> str:
 
 
 def _write_cumulative_subject_summary(rows: List[dict], out_csv_path: str) -> None:
-    """Write metrics as rows and subjects as columns using mean +/- standard deviation."""
     metric_keys = [
         "mcd",
+        "rmse",
         "pesq",
-        "cer_whisper",
-        "cer_gt_whisper",
+        #"cer_whisper",
+        #"cer_gt_whisper",
         "cer_wav2vec_finetuned",
         "cer_gt_wav2vec_finetuned",
         "cer_hubert",
@@ -331,7 +359,6 @@ def _write_subject_metric_statistics(
     metric_rows: List[tuple],
     out_csv_path: str,
 ) -> None:
-    """Write aggregate statistics for all metrics evaluated for one subject."""
     fieldnames = ["metric", "mean", "std", "min", "min_sample", "max", "max_sample"]
     report_rows = []
     for metric_name, rows, metric_key, include_extrema in metric_rows:
@@ -379,29 +406,136 @@ def _write_subject_metric_statistics(
     print(f"Saved subject metric statistics: {out_csv_path}")
 
 
+def mel_cepstral_distortion(mfcc_ref: np.ndarray, mfcc_deg: np.ndarray) -> float:
+    """Compute MCD (dB) on pre-aligned MFCC features."""
+    K = 10.0 / np.log(10.0)
+    min_t = min(mfcc_ref.shape[1], mfcc_deg.shape[1])
+    diff = mfcc_ref[1:, :min_t] - mfcc_deg[1:, :min_t]  # exclude c0
+    mcd = K * np.mean(np.sqrt(2.0 * np.sum(diff ** 2, axis=0)))
+    return float(mcd)
+
+
+import scipy.fftpack
+
+def logmel_to_mfcc(log_mel: np.ndarray, n_mfcc: int = N_MFCC) -> np.ndarray:
+    """Compute MFCCs directly from log-mel spectrogram via Discrete Cosine Transform (DCT-II)."""
+    # Type-II DCT along frequency bins (axis 0), taking first n_mfcc coefficients
+    mfcc = scipy.fftpack.dct(log_mel, axis=0, type=2, norm="ortho")[:n_mfcc]
+    return mfcc.astype(np.float32)
+
+
 def compute_mcd_paired_rows(
     paired_rows: List[dict],
-    generated_mel_dir: str,
-    original_mel_dir: str,
     n_mfcc: int = N_MFCC,
 ) -> List[dict]:
     out_rows: List[dict] = []
     for row in paired_rows:
-        ref_mel = _load_mel_csv_clean(os.path.join(original_mel_dir, row["reference_mel"]))
-        gen_mel = _load_mel_csv_clean(os.path.join(generated_mel_dir, row["generated_mel"]))
+        ref_mel = row["ref_mel_arr"]
+        gen_mel = row["gen_mel_arr"]
 
-        ref_mfcc = librosa.feature.mfcc(S=ref_mel, n_mfcc=n_mfcc).astype(np.float32)
-        gen_mfcc = librosa.feature.mfcc(S=gen_mel, n_mfcc=n_mfcc).astype(np.float32)
-        mcd_score = float(mel_cepstral_distortion_dtw(ref_mfcc, gen_mfcc))
+        # Directly compute MFCCs from log-mels via DCT-II
+        ref_mfcc = logmel_to_mfcc(ref_mel, n_mfcc=n_mfcc)
+        gen_mfcc = logmel_to_mfcc(gen_mel, n_mfcc=n_mfcc)
+
+        mcd_score = mel_cepstral_distortion(ref_mfcc, gen_mfcc)
 
         enriched = dict(row)
         enriched["mcd"] = mcd_score
         out_rows.append(enriched)
         print(
-            f"[MCD] class={row['class_label']:02d} {row['generated_mel']} vs {row['reference_mel']}: {mcd_score:.4f}"
+            f"[MCD] class={row['class_label']:02d} {row['generated_mel']} vs {row['reference_mel']}: {mcd_score:.4f} dB"
         )
     return out_rows
 
+
+def compute_and_save_mcd_matrix_from_pairs(
+    paired_rows: List[dict],
+    out_dir: str,
+    n_mfcc: int = N_MFCC,
+    word_labels: Dict[int, str] = None,
+) -> np.ndarray:
+    ordered_rows = sorted(paired_rows, key=lambda r: int(r["class_label"]))
+    wav_names = [row["generated_wav"] for row in ordered_rows]
+    N = len(ordered_rows)
+
+    mfccs = [
+        logmel_to_mfcc(row["gen_mel_arr"], n_mfcc=n_mfcc)
+        for row in ordered_rows
+    ]
+
+    mcd_matrix = np.zeros((N, N), dtype=np.float32)
+    for i in range(N):
+        for j in range(i + 1, N):
+            score = mel_cepstral_distortion(mfccs[i], mfccs[j])
+            mcd_matrix[i, j] = score
+            mcd_matrix[j, i] = score
+
+    os.makedirs(out_dir, exist_ok=True)
+    matrix_npy_path = os.path.join(out_dir, "mcd_pairwise.npy")
+    matrix_csv_path = os.path.join(out_dir, "mcd_pairwise.csv")
+    matrix_png_path = os.path.join(out_dir, "mcd_pairwise_names.png")
+
+    np.save(matrix_npy_path, mcd_matrix)
+    np.savetxt(matrix_csv_path, mcd_matrix, delimiter=",", fmt="%.6f")
+    plot_mcd_matrix(mcd_matrix, wav_names, matrix_png_path, word_labels=word_labels)
+
+    return mcd_matrix
+
+
+def plot_mcd_matrix(dist_matrix: np.ndarray, wav_names: list, out_path: str, word_labels: dict = None):
+    N = len(wav_names)
+    labels = [word_labels.get(natural_key(n)[0], os.path.splitext(n)[0]) for n in wav_names] if word_labels else [os.path.splitext(n)[0] for n in wav_names]
+
+    fig, ax = plt.subplots(figsize=(max(10, N * 0.25), max(8, N * 0.25)))
+    im = ax.imshow(dist_matrix, aspect="auto", cmap="viridis")
+    fig.colorbar(im, ax=ax, label="MCD (dB)")
+    ax.set_xticks(range(N))
+    ax.set_yticks(range(N))
+    ax.set_xticklabels(labels, rotation=90, fontsize=6)
+    ax.set_yticklabels(labels, fontsize=6)
+    ax.set_title("Pairwise Mel-Cepstral Distortion Matrix")
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=300)
+    plt.close(fig)
+
+
+def paired_spectrograms_plot(
+    paired_rows: List[dict],
+    out_dir: str,
+    sr: int = SR,
+    fmin: float = FMIN,
+    fmax: float = FMAX,
+) -> None:
+    plots_dir = os.path.join(out_dir, "spectrogram_pairs")
+    os.makedirs(plots_dir, exist_ok=True)
+
+    for row in paired_rows:
+        ref_mel = row["ref_mel_arr"]
+        gen_mel = row["gen_mel_arr"]
+
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+
+        img0 = librosa.display.specshow(
+            ref_mel, sr=sr, x_axis="time", y_axis="mel", fmin=fmin, fmax=fmax, ax=axes[0]
+        )
+        axes[0].set_title(f"Reference: {row['word']} (Class {row['class_label']})")
+        fig.colorbar(img0, ax=axes[0], format="%+2.0f dB")
+
+        img1 = librosa.display.specshow(
+            gen_mel, sr=sr, x_axis="time", y_axis="mel", fmin=fmin, fmax=fmax, ax=axes[1]
+        )
+        axes[1].set_title(f"DTW-Warped Gen: {row['word']} (Class {row['class_label']})")
+        fig.colorbar(img1, ax=axes[1], format="%+2.0f dB")
+
+        plt.tight_layout()
+        
+        #wav name in output name
+        wav_stem = os.path.splitext(row["generated_wav"])[0]
+        safe_word = re.sub(r'[\\/*?:"<>|]', "", row["word"])
+        out_path = os.path.join(plots_dir, f"{wav_stem}_class{row['class_label']:02d}_{safe_word}.png")
+        
+        plt.savefig(out_path, dpi=300)
+        plt.close(fig)
 
 
 def compute_pesq_paired_rows(
@@ -421,11 +555,6 @@ def compute_pesq_paired_rows(
     for row in paired_rows:
         ref_wav, ref_sr = sf.read(os.path.join(original_wav_dir, row["reference_wav"]))
         gen_wav, gen_sr = sf.read(os.path.join(generated_wav_dir, row["generated_wav"]))
-
-        # if ref_wav.ndim == 2:
-        #         ref_wav = ref_wav.mean(axis=1)
-        # if gen_wav.ndim == 2:
-        #         gen_wav = gen_wav.mean(axis=1)
 
         ref_wav = ref_wav.astype(np.float32)
         gen_wav = gen_wav.astype(np.float32)
@@ -452,11 +581,47 @@ def compute_pesq_paired_rows(
         raise RuntimeError("No valid PESQ scores were computed")
     return out_rows
 
+
+def compute_rmse_paired_rows(
+    paired_rows: List[dict],
+    generated_wav_dir: str,
+    original_wav_dir: str,
+    target_sr: int = 16000,
+) -> List[dict]:
+    """Waveform RMSE between generated and reference wavs (resampled, truncated to common length)."""
+    out_rows: List[dict] = []
+    for row in paired_rows:
+        gen_wav, gen_sr = librosa.load(os.path.join(generated_wav_dir, row["generated_wav"]), sr=None, mono=True)
+        ref_wav, ref_sr = librosa.load(os.path.join(original_wav_dir, row["reference_wav"]), sr=None, mono=True)
+
+        if int(gen_sr) != int(target_sr):
+            gen_wav = librosa.resample(gen_wav, orig_sr=int(gen_sr), target_sr=int(target_sr))
+        if int(ref_sr) != int(target_sr):
+            ref_wav = librosa.resample(ref_wav, orig_sr=int(ref_sr), target_sr=int(target_sr))
+
+        min_len = min(len(ref_wav), len(gen_wav))
+        if min_len == 0:
+            print(f"[RMSE] Skip class={row['class_label']:02d}: empty audio")
+            continue
+
+        diff = ref_wav[:min_len].astype(np.float64) - gen_wav[:min_len].astype(np.float64)
+        score = float(np.sqrt(np.mean(diff ** 2)))
+        enriched = dict(row)
+        enriched["rmse"] = score
+        out_rows.append(enriched)
+        print(f"[RMSE] class={row['class_label']:02d} {row['generated_wav']} vs {row['reference_wav']}: {score:.6f}")
+
+    if not out_rows:
+        raise RuntimeError("No valid RMSE scores were computed")
+    return out_rows
+
+
 def t_whisper(waveform, processor, model, device, sr):
     feats = processor(waveform, sampling_rate=sr, return_tensors="pt").input_features.to(device=device, dtype=model.dtype)
     ids = model.generate(feats, language="en", task="transcribe")
     return processor.batch_decode(ids, skip_special_tokens=True)[0]
-    
+
+
 def compute_cer_paired_rows(
     paired_rows: List[dict],
     generated_wav_dir: str,
@@ -476,7 +641,6 @@ def compute_cer_paired_rows(
     processor = AutoProcessor.from_pretrained(source)
 
     if model_name == WHISPER_MODEL_NAME:
-        #processor = AutoProcessor.from_pretrained(source)
         model = AutoModelForSpeechSeq2Seq.from_pretrained(source).to(device)
         model.eval()
     else:
@@ -491,8 +655,6 @@ def compute_cer_paired_rows(
 
             generated_waveform, generated_sr = librosa.load(generated_wav_path, sr=None, mono=True)
             reference_waveform, reference_sr = librosa.load(reference_wav_path, sr=None, mono=True)
-            print(generated_waveform.shape)
-            print(reference_waveform.shape)
 
             if int(generated_sr) != int(target_sr):
                 generated_waveform = librosa.resample(generated_waveform, orig_sr=int(generated_sr), target_sr=int(target_sr))
@@ -507,9 +669,6 @@ def compute_cer_paired_rows(
             )
 
             if model_name == WHISPER_MODEL_NAME:
-                #feats = processor(waveform, sampling_rate=sr, return_tensors="pt").input_features.to(device)
-                #ids = model.generate(feats, language="en", task="transcribe")
-                #  processor.batch_decode(ids, skip_special_tokens=True)[0]
                 generated_pred_text = t_whisper(generated_waveform, processor, model, device, target_sr)
                 reference_pred_text = t_whisper(reference_waveform, processor, model, device, target_sr)
             else:
@@ -547,390 +706,6 @@ def compute_cer_paired_rows(
     return out_rows
 
 
-
-
-def compute_mfccs(log_mel_arr: np.ndarray, n_mfcc: int = N_MFCC) -> np.ndarray:
-    """Compute MFCCs from a log-mel spectrogram array [N, N_MELS, T].
-    Returns mfcc_arr of shape [N, n_mfcc, T].
-    """
-    mfcc_list = []
-    for log_mel in log_mel_arr:  # [N_MELS, T]
-        mfcc = librosa.feature.mfcc(S=log_mel, n_mfcc=n_mfcc).astype(np.float32)
-        mfcc_list.append(mfcc)
-    mfcc_arr = np.stack(mfcc_list, axis=0)  # [N, n_mfcc, T]
-    print(f"MFCCs shape: {mfcc_arr.shape}")
-    return mfcc_arr
-
-
-def mel_cepstral_distortion(mfcc_ref: np.ndarray, mfcc_deg: np.ndarray) -> float:
-    """Compute the Mean Mel-Cepstral Distortion (MCD) between two MFCC arrays.
-
-    mfcc_ref, mfcc_deg: [n_mfcc, T] or [N, n_mfcc, T].
-    MCD (dB) = (10 / ln(10)) * mean_over_frames( sqrt(2 * sum_c((c_ref - c_deg)^2)) )
-    Coefficient c0 (index 0) is excluded per convention.
-    """
-    K = 10.0 / np.log(10.0)
-
-    # def _mcd_single(ref, deg):  # [n_mfcc, T]
-    #     min_t = min(ref.shape[1], deg.shape[1])
-    #     diff = ref[1:, :min_t] - deg[1:, :min_t]  # exclude c0
-    #     return K * np.mean(np.sqrt(2.0 * np.sum(diff ** 2, axis=0)))
-
-    if mfcc_ref.ndim == 2:
-        min_t = min(mfcc_ref.shape[1], mfcc_deg.shape[1])
-        diff = mfcc_ref[1:, :min_t] - mfcc_deg[1:, :min_t]  # exclude c0
-        mcd = K * np.mean(np.sqrt(2.0 * np.sum(diff ** 2, axis=0)))
-        return float(mcd)
-        # return float(_mcd_single(mfcc_ref, mfcc_deg))
-
-    # [N, n_mfcc, T] — return per-sample MCD array
-    scores = np.array([mel_cepstral_distortion_dtw(mfcc_ref[i], mfcc_deg[i]) for i in range(len(mfcc_ref))])
-    print(f"MCD per sample: mean={scores.mean():.4f} dB, std={scores.std():.4f} dB")
-    return scores
-
-
-def mel_cepstral_distortion_dtw(mfcc_ref: np.ndarray, mfcc_deg: np.ndarray) -> float:
-    """
-    mfcc_ref, mfcc_deg: [n_mfcc, T]
-    """
-    # Exclude c0 and transpose to shape [T, n_mfcc - 1] for vector distance calculation
-    ref_frames = mfcc_ref[1:, :].T
-    deg_frames = mfcc_deg[1:, :].T
-
-    # fastdtw aligns frame sequences along axis 0
-    _, path = fastdtw(ref_frames, deg_frames, dist=euclidean)
-
-    # Extract aligned frame pairs along warping path
-    ref_indices, deg_indices = zip(*path)
-    ref_aligned = ref_frames[list(ref_indices)]  # [P, n_mfcc - 1]
-    deg_aligned = deg_frames[list(deg_indices)]  # [P, n_mfcc - 1]
-
-    # Compute frame-wise euclidean distance
-    K = 10.0 / np.log(10.0)
-    diff = ref_aligned - deg_aligned  # [P, n_mfcc - 1]
-    
-    # Sum over coefficients, square root, then mean over path length P
-    frame_distances = np.sqrt(2.0 * np.sum(diff ** 2, axis=1))
-    mcd = K * np.mean(frame_distances)
-    
-    return float(mcd)
-
-
-def mcd_pairwise_matrix(mfcc_arr: np.ndarray, wav_names: list) -> np.ndarray:
-    """Compute the full NxN pairwise MCD distance matrix.
-
-    mfcc_arr: [N, n_mfcc, T]
-    Returns dist_matrix [N, N] and prints the closest neighbour for each audio.
-    """
-    K = 10.0 / np.log(10.0)
-    N = len(mfcc_arr)
-    dist = np.zeros((N, N), dtype=np.float32)
-
-    for i in range(N):
-        for j in range(i + 1, N):
-            min_t = min(mfcc_arr[i].shape[1], mfcc_arr[j].shape[1])
-            diff = mfcc_arr[i][1:, :min_t] - mfcc_arr[j][1:, :min_t]
-            d = K * np.mean(np.sqrt(2.0 * np.sum(diff ** 2, axis=0)))
-            dist[i, j] = d
-            dist[j, i] = d
-
-    print(f"\nPairwise MCD matrix ({N}x{N}):")
-    for i in range(N):
-        row = dist[i].copy()
-        row[i] = np.inf  # exclude self
-        nearest_idx = int(np.argmin(row))
-        print(f"  {wav_names[i]:20s}  closest: {wav_names[nearest_idx]:20s}  MCD={dist[i, nearest_idx]:.4f} dB")
-
-    return dist
-
-def compute_and_save_mcd_matrix_from_pairs(
-    paired_rows: List[dict],
-    generated_mel_dir: str,
-    out_dir: str,
-    n_mfcc: int = N_MFCC,
-    word_labels: Dict[int, str] = None,
-) -> np.ndarray:
-    ordered_rows = sorted(paired_rows, key=lambda r: int(r["class_label"]))
-
-    mel_list = []
-    wav_names = []
-    for row in ordered_rows:
-        mel = _load_mel_csv_clean(os.path.join(generated_mel_dir, row["generated_mel"]))
-        mel_list.append(mel)
-        wav_names.append(row["generated_wav"])
-
-    mel_arr = np.stack(mel_list, axis=0)
-    mfcc_arr = compute_mfccs(mel_arr, n_mfcc=n_mfcc)
-    mcd_matrix = mcd_pairwise_matrix(mfcc_arr, wav_names)
-
-    os.makedirs(out_dir, exist_ok=True)
-    matrix_npy_path = os.path.join(out_dir, "mcd_pairwise.npy")
-    matrix_csv_path = os.path.join(out_dir, "mcd_pairwise.csv")
-    matrix_png_path = os.path.join(out_dir, "mcd_pairwise_names.png")
-
-    np.save(matrix_npy_path, mcd_matrix)
-    np.savetxt(matrix_csv_path, mcd_matrix, delimiter=",", fmt="%.6f")
-    plot_mcd_matrix(mcd_matrix, wav_names, matrix_png_path, word_labels=word_labels)
-
-    print(f"Saved MCD matrix NPY: {matrix_npy_path}")
-    print(f"Saved MCD matrix CSV: {matrix_csv_path}")
-    return mcd_matrix
-
-# def ssim_pairwise_matrix(mel_arr: np.ndarray, wav_names: list, win_size: int = 7) -> np.ndarray:
-#     """Compute the full NxN pairwise SSIM similarity matrix on log-mel spectrograms.
-
-#     mel_arr: [N, N_MELS, T] — treated as 2D grayscale images.
-#     SSIM in [-1, 1]: higher = more similar.
-#     """
-
-#     N = len(mel_arr)
-#     sim = np.zeros((N, N), dtype=np.float32)
-#     data_range = float(mel_arr.max() - mel_arr.min())
-
-#     for i in range(N):
-#         sim[i, i] = 1.0
-#         for j in range(i + 1, N):
-#             s = structural_similarity(
-#                 mel_arr[i], mel_arr[j],
-#                 win_size=win_size,
-#                 data_range=data_range,
-#             )
-#             sim[i, j] = s
-#             sim[j, i] = s
-
-#     print(f"\nPairwise SSIM matrix ({N}x{N}):")
-#     for i in range(N):
-#         row = sim[i].copy()
-#         row[i] = -np.inf  # exclude self
-#         nearest_idx = int(np.argmax(row))
-#         print(f"  {wav_names[i]:20s}  most similar: {wav_names[nearest_idx]:20s}  SSIM={sim[i, nearest_idx]:.4f}")
-
-#     return sim
-
-
-def plot_mcd_matrix(dist_matrix: np.ndarray, wav_names: list, out_path: str, word_labels: dict = None):
-    N = len(wav_names)
-    if word_labels:
-        labels = [word_labels.get(natural_key(n)[0], os.path.splitext(n)[0]) for n in wav_names]
-    else:
-        labels = [os.path.splitext(n)[0] for n in wav_names]
-
-    fig, ax = plt.subplots(figsize=(max(10, N * 0.25), max(8, N * 0.25)))
-    im = ax.imshow(dist_matrix, aspect="auto", cmap="viridis")
-    fig.colorbar(im, ax=ax, label="MCD (dB)")
-    ax.set_xticks(range(N))
-    ax.set_yticks(range(N))
-    ax.set_xticklabels(labels, rotation=90, fontsize=6)
-    ax.set_yticklabels(labels, fontsize=6)
-    ax.set_title("Pairwise Mel-Cepstral Distortion Matrix")
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=300)
-    plt.close(fig)
-    print(f"Saved MCD matrix plot: {out_path}")
-
-
-def paired_spectrograms_plot(
-    paired_rows: List[dict],
-    generated_mel_dir: str,
-    original_mel_dir: str,
-    out_dir: str,
-    sr: int = SR,
-    fmin: float = FMIN,
-    fmax: float = FMAX,
-) -> None:
-    """Plots and saves side-by-side comparisons of reference and generated mel-spectrograms."""
-    plots_dir = os.path.join(out_dir, "spectrogram_pairs")
-    os.makedirs(plots_dir, exist_ok=True)
-
-    for row in paired_rows:
-        ref_mel = _load_mel_csv_clean(os.path.join(original_mel_dir, row["reference_mel"]))
-        gen_mel = _load_mel_csv_clean(os.path.join(generated_mel_dir, row["generated_mel"]))
-
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
-
-        img0 = librosa.display.specshow(
-            ref_mel,
-            sr=sr,
-            x_axis="time",
-            y_axis="mel",
-            fmin=fmin,
-            fmax=fmax,
-            ax=axes[0],
-        )
-        axes[0].set_title(f"Reference: {row['word']} (Class {row['class_label']})")
-        fig.colorbar(img0, ax=axes[0], format="%+2.0f dB")
-
-        img1 = librosa.display.specshow(
-            gen_mel,
-            sr=sr,
-            x_axis="time",
-            y_axis="mel",
-            fmin=fmin,
-            fmax=fmax,
-            ax=axes[1],
-        )
-        axes[1].set_title(f"Generated: {row['word']} (Class {row['class_label']})")
-        fig.colorbar(img1, ax=axes[1], format="%+2.0f dB")
-
-        plt.tight_layout()
-
-        safe_word = re.sub(r'[\\/*?:"<>|]', "", row["word"])
-        out_path = os.path.join(plots_dir, f"pair_class_{row['class_label']:02d}_{safe_word}.png")
-
-        plt.savefig(out_path, dpi=300)
-        plt.close(fig)
-
-
-def compute_wav2vec_embeddings(
-    wav_dir: str,
-    model_name: str = W2V_MODEL_NAME,
-    finetuned_path: str = W2V_FT_PATH,
-    target_sr: int = 16000,
-    device: str = None,
-) -> tuple:
-    """Compute one wav2vec embedding per audio using mean pooled hidden states.
-
-    Returns:
-        wav_names: sorted WAV file names
-        embeddings: np.ndarray [N, D]
-    """
-
-    transformers_mod = importlib.import_module("transformers")
-    AutoModel = getattr(transformers_mod, "AutoModel")
-    AutoModelForCTC = getattr(transformers_mod, "AutoModelForCTC")
-    AutoProcessor = getattr(transformers_mod, "AutoProcessor")
-
-    wav_names = sorted(
-        [f for f in os.listdir(wav_dir) if f.lower().endswith(".wav")],
-        key=natural_key,
-    )
-    if not wav_names:
-        raise RuntimeError(f"No WAV files found in {wav_dir}")
-
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Prefer a local fine-tuned checkpoint when available, otherwise use model_name.
-    pretrained_source = finetuned_path if finetuned_path and os.path.isdir(finetuned_path) else model_name
-    if pretrained_source == finetuned_path:
-        print(f"Loading wav2vec from fine-tuned path: {pretrained_source}")
-    else:
-        print(f"Fine-tuned path not found ({finetuned_path}); loading: {pretrained_source}")
-
-    processor = AutoProcessor.from_pretrained(pretrained_source)
-    try:
-        model = AutoModel.from_pretrained(pretrained_source).to(device)
-    except Exception as exc:
-        # Some fine-tuned checkpoints are saved as CTC heads; use their backbone for embeddings.
-        print(f"AutoModel load failed ({exc}); falling back to AutoModelForCTC backbone.")
-        ctc_model = AutoModelForCTC.from_pretrained(pretrained_source).to(device)
-        model = ctc_model.wav2vec2
-
-    model.eval()
-
-    embeddings = []
-    with torch.no_grad():
-        for wav_name in wav_names:
-            wav_path = os.path.join(wav_dir, wav_name)
-            waveform, wav_sr = librosa.load(wav_path, sr=None, mono=True)
-            if int(wav_sr) != int(target_sr):
-                waveform = librosa.resample(waveform, orig_sr=int(wav_sr), target_sr=int(target_sr))
-
-            inputs = processor(
-                waveform,
-                sampling_rate=target_sr,
-                return_tensors="pt",
-                padding=True,
-            )
-            input_values = inputs.input_values.to(device)
-            attention_mask = inputs.attention_mask.to(device) if "attention_mask" in inputs else None
-
-            outputs = model(input_values=input_values, attention_mask=attention_mask)
-            hidden = outputs.last_hidden_state[0]
-            emb = hidden.mean(dim=0).cpu().numpy().astype(np.float32)
-            embeddings.append(emb)
-            print(f"{wav_name}: wav2vec embedding shape {emb.shape}")
-
-    emb_arr = np.stack(embeddings, axis=0)
-    out_path = os.path.join(wav_dir, "wav2vec_embeddings.npy")
-    np.save(out_path, emb_arr)
-    print(f"\nSaved wav2vec embeddings: {emb_arr.shape} -> {out_path}")
-    return wav_names, emb_arr
-
-
-def plot_wav2vec_tsne(
-    embeddings: np.ndarray,
-    wav_names: list,
-    out_path: str,
-    word_labels: dict = None,
-    perplexity: float = 10.0,
-    random_state: int = 42,
-):
-    """Run 2D t-SNE on wav2vec embeddings and save a labeled scatter plot."""
-    if embeddings.ndim != 2:
-        raise ValueError(f"Expected embeddings shape [N, D], got {embeddings.shape}")
-    if len(wav_names) != len(embeddings):
-        raise ValueError("wav_names length must match number of embeddings")
-
-    n_samples = embeddings.shape[0]
-    if n_samples < 3:
-        raise ValueError("Need at least 3 samples to run t-SNE reliably")
-    # t-SNE requires perplexity < n_samples
-    effective_perplexity = min(perplexity, float(n_samples - 1))
-
-    tsne = TSNE(
-        n_components=2,
-        perplexity=effective_perplexity,
-        init="pca",
-        learning_rate="auto",
-        random_state=random_state,
-    )
-    points = tsne.fit_transform(embeddings)
-
-    if word_labels:
-        labels = [word_labels.get(natural_key(n)[0], os.path.splitext(n)[0]) for n in wav_names]
-    else:
-        labels = [os.path.splitext(n)[0] for n in wav_names]
-
-    unique_labels = sorted(set(labels))
-    colors = plt.cm.get_cmap("tab20", len(unique_labels))
-    label_to_idx = {lab: i for i, lab in enumerate(unique_labels)}
-
-    fig, ax = plt.subplots(figsize=(11, 8))
-    for lab in unique_labels:
-        idxs = [i for i, value in enumerate(labels) if value == lab]
-        xy = points[idxs]
-        ax.scatter(
-            xy[:, 0],
-            xy[:, 1],
-            s=30,
-            alpha=0.85,
-            color=colors(label_to_idx[lab]),
-            label=lab,
-        )
-
-    ax.set_title("t-SNE of wav2vec Audio Embeddings")
-    ax.set_xlabel("t-SNE 1")
-    ax.set_ylabel("t-SNE 2")
-    ax.grid(True, alpha=0.25)
-
-    legend_cols = 1 if len(unique_labels) <= 20 else 2
-    ax.legend(
-        title="Words",
-        fontsize=7,
-        title_fontsize=8,
-        ncol=legend_cols,
-        loc="center left",
-        bbox_to_anchor=(1.01, 0.5),
-        frameon=True,
-    )
-
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved wav2vec t-SNE plot: {out_path}")
-
-
 if __name__ == "__main__":
     word_labels = load_word_labels(EVENTS_CSV)
     subject_runs = _resolve_generated_subject_dirs(GENERATED_DIR)
@@ -949,6 +724,8 @@ if __name__ == "__main__":
         os.makedirs(output_dir, exist_ok=True)
 
         print(f"\n===== Evaluating subject: {subject_id} =====")
+
+        # Builds paired rows and aligns log-mel spectrograms using fastdtw before evaluation
         paired_rows = _build_paired_sample_rows(
             generated_wav_dir=generated_wav_dir,
             original_wav_dir=AUDIODATA_DIR,
@@ -957,11 +734,8 @@ if __name__ == "__main__":
             word_labels=word_labels,
         )
 
-        
         paired_spectrograms_plot(
             paired_rows=paired_rows,
-            generated_mel_dir=generated_mel_dir,
-            original_mel_dir=ORIGINAL_MELS,
             out_dir=output_dir,
             sr=SR,
             fmin=FMIN,
@@ -970,18 +744,28 @@ if __name__ == "__main__":
 
         mcd_rows = compute_mcd_paired_rows(
             paired_rows=paired_rows,
-            generated_mel_dir=generated_mel_dir,
-            original_mel_dir=ORIGINAL_MELS,
             n_mfcc=N_MFCC,
         )
         _write_metric_summary_csv(mcd_rows, "mcd", os.path.join(output_dir, "mcd_summary.csv"))
+        
         compute_and_save_mcd_matrix_from_pairs(
             paired_rows=paired_rows,
-            generated_mel_dir=generated_mel_dir,
             out_dir=output_dir,
             n_mfcc=N_MFCC,
             word_labels=word_labels,
         )
+
+        rmse_rows = []
+        try:
+            rmse_rows = compute_rmse_paired_rows(
+                paired_rows=paired_rows,
+                generated_wav_dir=generated_wav_dir,
+                original_wav_dir=AUDIODATA_DIR,
+                target_sr=16000,
+            )
+            _write_metric_summary_csv(rmse_rows, "rmse", os.path.join(output_dir, "rmse_summary.csv"))
+        except Exception as exc:
+            print(f"[WARN] RMSE skipped or failed: {exc}")
 
         pesq_summary_path = os.path.join(output_dir, "pesq_summary.csv")
         pesq_rows = []
@@ -994,101 +778,42 @@ if __name__ == "__main__":
                 mode="wb",
             )
             _write_metric_summary_csv(pesq_rows, "pesq", pesq_summary_path)
-        except ImportError as exc:
-            print(f"[WARN] PESQ unavailable: {exc}")
-            print("[WARN] Skipping PESQ. Continuing with MCD and CER.")
-            with open(pesq_summary_path, "w", newline="", encoding="utf-8") as handle:
-                writer = csv.DictWriter(
-                    handle,
-                    fieldnames=[
-                        "class_label",
-                        "word",
-                        "generated_wav",
-                        "reference_wav",
-                        "generated_mel",
-                        "reference_mel",
-                        "pesq",
-                    ],
-                )
-                writer.writeheader()
-                writer.writerow(
-                    {
-                        "class_label": "UNAVAILABLE",
-                        "word": "UNAVAILABLE",
-                        "generated_wav": "",
-                        "reference_wav": "",
-                        "generated_mel": "",
-                        "reference_mel": "",
-                        "pesq": "nan",
-                    }
-                )
-            print(f"Saved placeholder PESQ summary: {pesq_summary_path}")
         except Exception as exc:
-            print(f"[WARN] PESQ computation failed: {exc}")
-            print("[WARN] Skipping PESQ. Continuing with MCD and CER.")
+            print(f"[WARN] PESQ skipped or failed: {exc}")
 
-        # 1) CER with wav2vec base model
-        cer_w2v_base_rows = compute_cer_paired_rows(
-            paired_rows=paired_rows,
-            generated_wav_dir=generated_wav_dir,
-            original_wav_dir=AUDIODATA_DIR,
-            model_name=WHISPER_MODEL_NAME,
-            finetuned_path=None,
-            target_sr=CER_TARGET_SR,
-        )
-        _write_metric_summary_csv(
-            cer_w2v_base_rows,
-            "cer",
-            os.path.join(output_dir, "cer_whisper_summary.csv"),
-        )
+        # CER with Whisper
+        # cer_w2v_base_rows = compute_cer_paired_rows(
+        #     paired_rows=paired_rows,
+        #     generated_wav_dir=generated_wav_dir,
+        #     original_wav_dir=AUDIODATA_DIR,
+        #     model_name=WHISPER_MODEL_NAME,
+        #     finetuned_path=None,
+        #     target_sr=CER_TARGET_SR,
+        # )
+        # _write_metric_summary_csv(
+        #     cer_w2v_base_rows,
+        #     "cer",
+        #     os.path.join(output_dir, "cer_whisper_summary.csv"),
+        # )
 
-        # 2) CER with wav2vec fine-tuned checkpoint
+        # CER with fine-tuned wav2vec
         cer_w2v_ft_summary_path = os.path.join(output_dir, "cer_wav2vec_finetuned_summary.csv")
         cer_w2v_ft_rows = []
         try:
-            if not os.path.isdir(W2V_FT_PATH):
-                raise FileNotFoundError(f"Fine-tuned wav2vec checkpoint folder not found: {W2V_FT_PATH}")
-            cer_w2v_ft_rows = compute_cer_paired_rows(
-                paired_rows=paired_rows,
-                generated_wav_dir=generated_wav_dir,
-                original_wav_dir=AUDIODATA_DIR,
-                model_name=W2V_MODEL_NAME,
-                finetuned_path=W2V_FT_PATH,
-                target_sr=CER_TARGET_SR,
-            )
-            _write_metric_summary_csv(cer_w2v_ft_rows, "cer", cer_w2v_ft_summary_path)
+            if os.path.isdir(W2V_FT_PATH):
+                cer_w2v_ft_rows = compute_cer_paired_rows(
+                    paired_rows=paired_rows,
+                    generated_wav_dir=generated_wav_dir,
+                    original_wav_dir=AUDIODATA_DIR,
+                    model_name=W2V_MODEL_NAME,
+                    finetuned_path=W2V_FT_PATH,
+                    target_sr=CER_TARGET_SR,
+                )
+                _write_metric_summary_csv(cer_w2v_ft_rows, "cer", cer_w2v_ft_summary_path)
         except Exception as exc:
-            print(f"[WARN] wav2vec fine-tuned CER unavailable: {exc}")
-            with open(cer_w2v_ft_summary_path, "w", newline="", encoding="utf-8") as handle:
-                writer = csv.DictWriter(
-                    handle,
-                    fieldnames=[
-                        "class_label",
-                        "word",
-                        "generated_wav",
-                        "reference_wav",
-                        "generated_mel",
-                        "reference_mel",
-                        "cer",
-                        "cer_gt",
-                    ],
-                )
-                writer.writeheader()
-                writer.writerow(
-                    {
-                        "class_label": "UNAVAILABLE",
-                        "word": "UNAVAILABLE",
-                        "generated_wav": "",
-                        "reference_wav": "",
-                        "generated_mel": "",
-                        "reference_mel": "",
-                        "cer": "nan",
-                        "cer_gt": "nan",
-                    }
-                )
-            print(f"Saved placeholder CER summary: {cer_w2v_ft_summary_path}")
+            print(f"[WARN] Fine-tuned wav2vec CER failed: {exc}")
 
-        # 3) CER with HuBERT
+        # CER with HuBERT
         cer_hubert_rows = compute_cer_paired_rows(
             paired_rows=paired_rows,
             generated_wav_dir=generated_wav_dir,
@@ -1106,9 +831,10 @@ if __name__ == "__main__":
         _write_subject_metric_statistics(
             [
                 ("mcd", mcd_rows, "mcd", True),
+                ("rmse", rmse_rows, "rmse", True),
                 ("pesq", pesq_rows, "pesq", True),
-                ("cer_whisper", cer_w2v_base_rows, "cer", True),
-                ("cer_gt_whisper", cer_w2v_base_rows, "cer_gt", False),
+                #("cer_whisper", cer_w2v_base_rows, "cer", True),
+                #("cer_gt_whisper", cer_w2v_base_rows, "cer_gt", False),
                 ("cer_wav2vec_finetuned", cer_w2v_ft_rows, "cer", True),
                 ("cer_gt_wav2vec_finetuned", cer_w2v_ft_rows, "cer_gt", False),
                 ("cer_hubert", cer_hubert_rows, "cer", True),
@@ -1121,9 +847,10 @@ if __name__ == "__main__":
             {
                 "subject_id": subject_id,
                 "mcd": _format_mean_plus_std(mcd_rows, "mcd"),
+                "rmse": _format_mean_plus_std(rmse_rows, "rmse"),
                 "pesq": _format_mean_plus_std(pesq_rows, "pesq"),
-                "cer_whisper": _format_mean_plus_std(cer_w2v_base_rows, "cer"),
-                "cer_gt_whisper": _format_mean_plus_std(cer_w2v_base_rows, "cer_gt"),
+                #"cer_whisper": _format_mean_plus_std(cer_w2v_base_rows, "cer"),
+                #"cer_gt_whisper": _format_mean_plus_std(cer_w2v_base_rows, "cer_gt"),
                 "cer_wav2vec_finetuned": _format_mean_plus_std(cer_w2v_ft_rows, "cer"),
                 "cer_gt_wav2vec_finetuned": _format_mean_plus_std(cer_w2v_ft_rows, "cer_gt"),
                 "cer_hubert": _format_mean_plus_std(cer_hubert_rows, "cer"),
