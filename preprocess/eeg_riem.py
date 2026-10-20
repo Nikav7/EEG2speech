@@ -117,7 +117,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--subjects", nargs="+", type=int, default=[15, 16, 17, 18, 19])
     parser.add_argument("--output-dir", default="riem_embeddings_aug40")
-    parser.add_argument("--rawdata-dir", default="eegdata_rawsplits/rawsplits_tog_riem/raw_post_augmentation40")
+    parser.add_argument("--rawdata-dir", default="eegdata_rawsplits/raw_post_augmentation40")
 
     args = parser.parse_args()
     OUTPUT, RAWDATA = args.output_dir, args.rawdata_dir

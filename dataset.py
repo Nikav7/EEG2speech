@@ -132,7 +132,9 @@ class myDataset(Dataset):
             target_cl = np.squeeze(target_cl)
 
         # to tensor
-        input = torch.tensor(input, dtype=torch.float32)
+        #input = torch.tensor(input, dtype=torch.float32)
+        input = torch.tensor(input, dtype=torch.float32).transpose(0, 1) #when using Riem embeddings
+        #print(input.shape)
         target = torch.tensor(target, dtype=torch.float32)
         target_cl = torch.tensor(target_cl, dtype=torch.float32)
 

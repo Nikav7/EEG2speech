@@ -1,0 +1,8 @@
+metric,mean,std,min,min_sample,max,max_sample
+mcd,328.968830,58.513478,232.589062,label010_trial0003_pred_Left.wav,469.003217,label068_trial0016_pred_Help.wav
+rmse,0.124352,0.029624,0.071981,label027_trial0000_pred_Four.wav,0.185595,label051_trial0007_pred_Music.wav
+pesq,N/A,N/A,N/A,N/A,N/A,N/A
+cer_wav2vec_finetuned,0.923316,0.127869,0.500000,label021_trial0024_pred_Foot.wav,1.000000,label001_trial0028_pred_Hello.wav
+cer_gt_wav2vec_finetuned,0.267003,0.382191,N/A,N/A,N/A,N/A
+cer_hubert,0.951527,0.280163,0.666667,label024_trial0023_pred_One.wav,2.333333,label059_trial0021_pred_Who.wav
+cer_gt_hubert,0.179990,0.243449,N/A,N/A,N/A,N/A

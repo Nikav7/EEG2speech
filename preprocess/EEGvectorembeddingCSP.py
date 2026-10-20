@@ -531,7 +531,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subjects", nargs="+", type=int, default=[15, 16, 17, 18, 19])
     parser.add_argument("--eeg-data-dir", default="clean_data01-120Hz")
-    parser.add_argument("--output-dir", default="eegdata_togrnd1")
+    parser.add_argument("--output-dir", default="CSPembeddings_aug40_tog")
     parser.add_argument("--rawdata-output-dir", default="rawsplits_aug40_tog")
     args = parser.parse_args()
 

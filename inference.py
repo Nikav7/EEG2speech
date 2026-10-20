@@ -191,11 +191,14 @@ def _build_samples(subject_id: str, test_eeg_dir: str, audio_mel_dir: str) -> Li
 			)
 
 		eeg_np = _read_csv_matrix(eeg_file)
-		eeg_norm, _, _ = _normalize_array(eeg_np)
+		print(eeg_np.shape)
+		eeg_npT= np.transpose(eeg_np) #FOR RIEM EMBEDDINGS
+		print(eeg_npT.shape)
+		eeg_norm, _, _ = _normalize_array(eeg_npT)
 		target_mel = _read_csv_matrix(audio_mel_path)
 		_, target_avg, target_std = _normalize_array(target_mel)
 		target_mel_norm, _, _ = _normalize_array(target_mel)
-
+		
 		samples.append(
 			SampleInfo(
 				subject_id=subject_id,
@@ -455,7 +458,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--generator-checkpoint",
 		type=str,
-		default=os.path.join(project_root, "TrainResult22kHz_FT_3subs1618", "subj16-17-18", "imagined_speech", "savemodel", "BEST_checkpoint_g_epoch475.pt"),
+		default=os.path.join(project_root, "TrainResult22kHz_4subs15161718_Riem20_tog", "subj15-16-17-18", "imagined_speech","savemodel","checkpoint_g.pt"),
 		help="Path to trained generator checkpoint",
 	)
 	parser.add_argument(
@@ -467,13 +470,13 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--test-eeg-dir",
 		type=str,
-		default=os.path.join(project_root, "eegdata","eegdata_250sr_aug9_1619_rnd1", "csp_post_augmentation"),
+		default=os.path.join(project_root, "eegdata","riem_embeddings_aug20"),
 		help="Either a single test CSV folder (.../subjXX/imagined_speech/test) or a root folder containing subjXX subfolders",
 	)
 	parser.add_argument(
 		"--subjects",
 		type=str,
-		default="subj16,subj17,subj18,subj19",
+		default="15,16,17,18,19",
 		help="Optional comma-separated subject IDs to run (e.g. subj16,subj17 or 16,17)",
 	)
 
@@ -543,7 +546,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"--output-dir",
 		type=str,
-		default=os.path.join(project_root, "inference22kHz_3subs1618_ep475"),
+		default=os.path.join(project_root, "inference22kHz_riem1518_ep558"),
 		help="Directory to save outputs as per-subject subfolders (mel_csv + wav)",
 	)
 	return parser.parse_args()

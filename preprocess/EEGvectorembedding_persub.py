@@ -214,12 +214,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subjects", nargs="+", type=int, default=[15, 16, 17, 18, 19])
     parser.add_argument("--output-dir", default="eegdata_persub")
-    parser.add_argument("--rawdata-dir", default="eegdata_rawsplits")
+    parser.add_argument("--rawdata-dir", default="rawsplits_aug40_tog/raw_post_augmentation40_no_csp")
     args = parser.parse_args()
 
     #raw_pre_aug_dir = os.path.join(args.rawdata_output_dir, "raw_pre_augmentation")
     #raw_post_aug_dir = os.path.join(args.rawdata_output_dir, "raw_post_augmentation_no_csp")
-    csp_post_aug_dir = os.path.join(args.output_dir, "csp_aug20_rnd1")
+    csp_post_aug_dir = os.path.join(args.output_dir, "csp_aug40_rnd1_CHECK")
 
     #CSP params and others
     numcsp = 4
@@ -229,7 +229,7 @@ def main() -> None:
     seed = 1
     val_ratio = 0.2
     test_ratio = 0.1
-    use_augmentation = True
+    use_augmentation = False
     augment_target_per_class = 9
     eeg_splits = args.rawdata_dir
 
@@ -271,8 +271,8 @@ def main() -> None:
         
 
         out = CSP_training(
-            x_imagined=x_tr_im_aug, y_imagined=y_tr_im_aug,
-            x_attempted=x_tr_at_aug, y_attempted=y_tr_at_aug,
+            x_imagined=x_tr_im, y_imagined=y_tr_im,
+            x_attempted=x_tr_at, y_attempted=y_tr_at,
             x_listening=x_tr_li, y_listening=y_tr_li,
             x_val_im=x_val_im, y_val_im=y_val_im,
             x_val_at=x_val_at, y_val_at=y_val_at,
