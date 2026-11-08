@@ -188,8 +188,8 @@ def proc_multicsp_train(
         d = np.maximum(d, eps)
         p = p @ np.diag(np.sqrt(1.0 / d))
 
-        sig1_w = p.T @ sig1 @ p
-        sig1_w = 0.5 * (sig1_w + sig1_w.T)
+        sig1_w_ = p.T @ sig1 @ p
+        sig1_w = 0.5 * (sig1_w_ + sig1_w_.T)
 
         d2, r = np.linalg.eigh(sig1_w)
         order = np.argsort(d2)
